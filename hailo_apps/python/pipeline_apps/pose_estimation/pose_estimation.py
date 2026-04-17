@@ -45,6 +45,9 @@ class user_app_callback_class(app_callback_class):
         self.safe_zones = [
             (0.5, 0.5, 1.0, 1.0)
         ]
+        self.video_storage_path = None
+        self.video_writer = None
+        self.frames_since_last_person = 0
 
 
 # -----------------------------------------------------------------------------------------------
@@ -65,7 +68,7 @@ def app_callback(element, buffer, user_data):
     format, width, height = get_caps_from_pad(pad)
 
     frame = None
-    if user_data.use_frame and format and width and height:
+    if (user_data.use_frame or user_data.video_storage_path) and format and width and height:
         frame = get_numpy_from_buffer(buffer, format, width, height)
 
     roi = hailo.get_roi_from_buffer(buffer)
@@ -73,12 +76,15 @@ def app_callback(element, buffer, user_data):
 
     keypoints = get_keypoints()
 
+    person_detected = False
+
     for detection in detections:
         label = detection.get_label()
         bbox = detection.get_bbox()
         confidence = detection.get_confidence()
 
         if label == "person":
+            person_detected = True
             track_id = 0
             track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
             if len(track) == 1:
@@ -103,11 +109,38 @@ def app_callback(element, buffer, user_data):
                     if user_data.use_frame:
                         cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
 
-    if user_data.use_frame:
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        user_data.set_frame(frame)
+    if user_data.use_frame and frame is not None:
+        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        user_data.set_frame(frame_bgr)
 
-    # print(string_to_print)
+    if user_data.video_storage_path and frame is not None:
+        if user_data.use_frame:
+            frame_vid = frame_bgr
+        else:
+            frame_vid = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            
+        if person_detected:
+            user_data.frames_since_last_person = 0
+            if user_data.video_writer is None:
+                if not os.path.exists(user_data.video_storage_path):
+                    os.makedirs(user_data.video_storage_path, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = os.path.join(user_data.video_storage_path, f"event_{timestamp}.mp4")
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                user_data.video_writer = cv2.VideoWriter(filename, fourcc, 30.0, (width, height))
+                hailo_logger.info(f"Started recording event video to: {filename}")
+            
+            user_data.video_writer.write(frame_vid)
+        else:
+            if user_data.video_writer is not None:
+                user_data.frames_since_last_person += 1
+                if user_data.frames_since_last_person < 30:
+                    user_data.video_writer.write(frame_vid)
+                else:
+                    hailo_logger.info("Person left, finishing event video.")
+                    user_data.video_writer.release()
+                    user_data.video_writer = None
+
     return
 
 
@@ -196,8 +229,21 @@ def main():
         help="Overlay current date and time on the screen"
     )
 
-    app = GStreamerPoseEstimationApp(app_callback, user_data, parser=parser)    
+    parser.add_argument(
+        "--video-storage", 
+        type=str, 
+        default=None,
+        help="Path to directory for saving video events when a person is detected"
+    )
+
+    app = GStreamerPoseEstimationApp(app_callback, user_data, parser=parser)
+    user_data.video_storage_path = getattr(app.options_menu, "video_storage", None)
+    
     app.run()
+    
+    if user_data.video_writer is not None:
+        user_data.video_writer.release()
+        user_data.video_writer = None
 
 
 if __name__ == "__main__":
