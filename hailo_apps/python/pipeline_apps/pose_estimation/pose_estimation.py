@@ -107,6 +107,7 @@ def app_callback(element, buffer, user_data):
     roi = hailo.get_roi_from_buffer(buffer)
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
     fall_detected = False
+    active_track_id = 0
 
     for detection in detections:
         if detection.get_label() != "person":
@@ -117,6 +118,8 @@ def app_callback(element, buffer, user_data):
         track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
         if len(track) == 1:
             track_id = track[0].get_id()
+            
+        active_track_id = track_id
 
         hailo_logger.debug("Detection: ID=%d Confidence=%.2f", track_id, detection.get_confidence())
 
@@ -127,7 +130,8 @@ def app_callback(element, buffer, user_data):
                 fall_detected = True
                 if should_trigger_alert(user_data, track_id):
                     if user_data.telegram_token and user_data.telegram_chat_id:
-                        send_telegram_alert(user_data.telegram_token, user_data.telegram_chat_id, track_id, frame_bgr)
+                        alert_msg = f"⚠️ FALL DETECTED!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                        send_telegram_alert(user_data.telegram_token, user_data.telegram_chat_id, alert_msg, track_id, frame_bgr)
 
             if user_data.use_frame and frame_bgr is not None:
                 for eye in ["left_eye", "right_eye"]:
@@ -140,10 +144,10 @@ def app_callback(element, buffer, user_data):
         user_data.set_frame(frame_bgr)
 
     if user_data.event_storage_path and frame_bgr is not None:
-        write_video_frame(user_data, frame_bgr, width, height, fall_detected)
+        write_video_frame(user_data, frame_bgr, width, height, fall_detected, active_track_id)
 
 
-def write_video_frame(user_data, frame_bgr, width, height, fall_detected):
+def write_video_frame(user_data, frame_bgr, width, height, fall_detected, track_id):
     if fall_detected:
         user_data.frames_since_last_fall = 0
     elif user_data.video_writer is not None and user_data.frames_since_last_fall < TRAILING_FRAMES:
@@ -153,6 +157,10 @@ def write_video_frame(user_data, frame_bgr, width, height, fall_detected):
             hailo_logger.info("Fall resolved, finishing event video.")
             user_data.video_writer.release()
             user_data.video_writer = None
+            
+            if user_data.telegram_token and user_data.telegram_chat_id:
+                resolve_msg = f"✅ FALL EVENT RESOLVED\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                send_telegram_alert(user_data.telegram_token, user_data.telegram_chat_id, resolve_msg, track_id=track_id, frame_bgr=frame_bgr)
         return
 
     frame_to_write = frame_bgr.copy()
@@ -182,8 +190,7 @@ def write_video_frame(user_data, frame_bgr, width, height, fall_detected):
     user_data.video_writer.write(frame_to_write)
 
 
-def _execute_telegram_alert(token, chat_id, track_id, image_to_send, current_time):
-    message = f"⚠️ FALL DETECTED!\nPerson ID: {track_id}\nTime: {datetime.fromtimestamp(current_time).strftime('%Y-%m-%d %H:%M:%S')}"
+def _execute_telegram_alert(token, chat_id, track_id, image_to_send, current_time, message):
     try:
         if image_to_send is not None:
             snapshot_path = f"/tmp/fall_snapshot_{track_id}_{int(current_time)}.jpg"
@@ -207,13 +214,14 @@ def _execute_telegram_alert(token, chat_id, track_id, image_to_send, current_tim
         hailo_logger.error("Failed to execute Telegram alert: %s", e)
 
 
-def send_telegram_alert(token, chat_id, track_id, frame_bgr):
+def send_telegram_alert(token, chat_id, message, track_id=None, frame_bgr=None):
     if not token or not chat_id:
         return
+        
     image_to_send = frame_bgr.copy() if frame_bgr is not None else None
     t = threading.Thread(
         target=_execute_telegram_alert,
-        args=(token, chat_id, track_id, image_to_send, time.time()),
+        args=(token, chat_id, track_id, image_to_send, time.time(), message),
         daemon=True,
     )
     t.start()
