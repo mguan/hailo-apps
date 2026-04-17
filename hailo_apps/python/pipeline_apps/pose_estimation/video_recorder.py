@@ -19,9 +19,10 @@ class EventVideoRecorder:
     def is_enabled(self):
         return bool(self.event_storage_path)
 
-    def write_frame(self, frame_bgr, width, height, fall_detected, track_id, alert_manager):
+    def write_frame(self, frame_bgr, width, height, fall_detected) -> bool:
+        """Write a frame to the active recording. Returns True when a recording just finished."""
         if not self.is_enabled() or frame_bgr is None:
-            return
+            return False
 
         if fall_detected:
             self.frames_since_last_fall = 0
@@ -32,11 +33,8 @@ class EventVideoRecorder:
                 hailo_logger.info("Fall resolved, finishing event video.")
                 self.video_writer.release()
                 self.video_writer = None
-                
-                if alert_manager and alert_manager.providers:
-                    resolve_msg = f"✅ Fall event resolved\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                    alert_manager.send_alert(resolve_msg, image=frame_bgr)
-            return
+                return True
+            return False
 
         frame_to_write = frame_bgr.copy()
         if self.show_time:
@@ -63,6 +61,7 @@ class EventVideoRecorder:
             hailo_logger.info("Started recording fall event video to: %s", filename)
 
         self.video_writer.write(frame_to_write)
+        return False
 
     def release(self):
         if self.video_writer is not None:

@@ -90,6 +90,6 @@ class FallDetector:
         if current_time - self.last_alert_time.get(track_id, 0.0) > current_backoff:
             self.last_alert_time[track_id] = current_time
             self.fall_backoff[track_id] = min(current_backoff * 2, MAX_FALL_DEBOUNCE_SECONDS)
-            return True, self.fall_backoff[track_id]
-            
-        return False, -1
+            return True
+
+        return False
