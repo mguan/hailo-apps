@@ -57,9 +57,9 @@ class FallDetector:
 
         is_torso_horizontal = abs(hip_mid_x - shoulder_mid_x) > abs(hip_mid_y - shoulder_mid_y)
 
-        # 3. Nose below hips -> head is near the ground
+        # 3. Nose below hip midpoint -> head is near the ground
         nose = points[KEYPOINTS["nose"]]
-        is_head_low = nose.y() > left_hip.y() and nose.y() > right_hip.y()
+        is_head_low = nose.y() > hip_mid_y
 
         if not (is_horizontal_shape and is_torso_horizontal and is_head_low):
             return False
