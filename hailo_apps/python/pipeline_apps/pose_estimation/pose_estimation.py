@@ -1,6 +1,8 @@
 # region imports
 # Standard library imports
 import os
+import time
+from datetime import datetime
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
 # Third-party imports
@@ -34,6 +36,7 @@ hailo_logger = get_logger(__name__)
 class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
+        self.last_fall_time = {}
 
 
 # -----------------------------------------------------------------------------------------------
@@ -80,6 +83,20 @@ def app_callback(element, buffer, user_data):
             landmarks = detection.get_objects_typed(hailo.HAILO_LANDMARKS)
             if landmarks:
                 points = landmarks[0].get_points()
+                
+                # Fall detection: Check if nose is below both hips (y increases downwards)
+                nose = points[keypoints["nose"]]
+                left_hip = points[keypoints["left_hip"]]
+                right_hip = points[keypoints["right_hip"]]
+                
+                if nose.y() > left_hip.y() and nose.y() > right_hip.y():
+                    current_time = time.time()
+                    last_time = user_data.last_fall_time.get(track_id, 0.0)
+                    if current_time - last_time > 10.0:  # 10 seconds debounce
+                        user_data.last_fall_time[track_id] = current_time
+                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        print(f"FALL DETECTED: Person ID {track_id} at {timestamp}")
+
                 for eye in ["left_eye", "right_eye"]:
                     keypoint_index = keypoints[eye]
                     point = points[keypoint_index]
@@ -93,7 +110,7 @@ def app_callback(element, buffer, user_data):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         user_data.set_frame(frame)
 
-    print(string_to_print)
+    # print(string_to_print)
     return
 
 
