@@ -38,6 +38,13 @@ class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
         self.last_fall_time = {}
+        # Define Exclusion Zones (normalized coords: x_min, y_min, x_max, y_max)
+        # Bounding box centers within these zones are treated as safe resting.
+        # Format is roughly: top-left x, top-left y, bottom-right x, bottom-right y.
+        # Example: the bottom-right quadrant of the camera's view (0.5 to 1.0)
+        self.safe_zones = [
+            (0.5, 0.5, 1.0, 1.0)
+        ]
 
 
 # -----------------------------------------------------------------------------------------------
@@ -113,12 +120,27 @@ def app_callback(element, buffer, user_data):
 
                 # Combine heuristics
                 if is_torso_horizontal and is_head_low and is_horizontal_shape:
-                    current_time = time.time()
-                    last_time = user_data.last_fall_time.get(track_id, 0.0)
-                    if current_time - last_time > 10.0:  # 10 seconds debounce
-                        user_data.last_fall_time[track_id] = current_time
-                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        print(f"FALL DETECTED: Person ID {track_id} at {timestamp}")
+                    in_safe_zone = False
+                    
+                    # Compute center of the person's bounding box
+                    mid_x = bbox.xmin() + (bbox.width() / 2.0)
+                    mid_y = bbox.ymin() + (bbox.height() / 2.0)
+                    
+                    # Check if center falls inside any predefined exclusion zone
+                    for (z_xmin, z_ymin, z_xmax, z_ymax) in user_data.safe_zones:
+                        if z_xmin <= mid_x <= z_xmax and z_ymin <= mid_y <= z_ymax:
+                            in_safe_zone = True
+                            break
+                    
+                    if not in_safe_zone:
+                        current_time = time.time()
+                        last_time = user_data.last_fall_time.get(track_id, 0.0)
+                        if current_time - last_time > 10.0:  # 10 seconds debounce
+                            user_data.last_fall_time[track_id] = current_time
+                            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            print(f"FALL DETECTED: Person ID {track_id} at {timestamp}")
+                    else:
+                        hailo_logger.debug(f"Horizontal pose detected in SAFE ZONE (Person ID {track_id}). Interpreting as rest/sleep.")
 
                 for eye in ["left_eye", "right_eye"]:
                     keypoint_index = keypoints[eye]
