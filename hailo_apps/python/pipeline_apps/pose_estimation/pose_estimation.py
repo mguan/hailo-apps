@@ -77,7 +77,7 @@ class user_app_callback_class(app_callback_class):
         # Safe zones (normalized coords: x_min, y_min, x_max, y_max).
         # Persons whose bounding box center falls inside a safe zone are treated as resting.
         self.safe_zones = [
-            (0.5, 0.5, 1.0, 1.0)  # bottom-right quadrant
+            (0.0, 0.0, 0.0, 0.0)
         ]
         self.event_storage_path = None
         self.show_time = False
@@ -125,8 +125,18 @@ def app_callback(element, buffer, user_data):
         landmarks = detection.get_objects_typed(hailo.HAILO_LANDMARKS)
         if landmarks:
             points = landmarks[0].get_points()
-            if check_fall_detection(user_data, track_id, bbox, points, frame_bgr):
+            if check_fall_detection(user_data, track_id, bbox, points):
                 fall_detected = True
+                
+                if user_data.telegram_token and user_data.telegram_chat_id and should_trigger_alert(user_data, track_id):
+                    alert_msg = f"⚠️ FALL DETECTED!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    image_to_send = frame_bgr.copy() if frame_bgr is not None else None
+                    t = threading.Thread(
+                        target=send_telegram_alert,
+                        args=(user_data.telegram_token, user_data.telegram_chat_id, alert_msg, image_to_send, track_id, time.time()),
+                        daemon=True,
+                    )
+                    t.start()
 
             if user_data.use_frame and frame_bgr is not None:
                 for eye in ["left_eye", "right_eye"]:
@@ -139,10 +149,10 @@ def app_callback(element, buffer, user_data):
         user_data.set_frame(frame_bgr)
 
     if user_data.event_storage_path and frame_bgr is not None:
-        _write_video_frame(user_data, frame_bgr, width, height, fall_detected)
+        write_video_frame(user_data, frame_bgr, width, height, fall_detected)
 
 
-def _write_video_frame(user_data, frame_bgr, width, height, fall_detected):
+def write_video_frame(user_data, frame_bgr, width, height, fall_detected):
     if fall_detected:
         user_data.frames_since_last_fall = 0
     elif user_data.video_writer is not None and user_data.frames_since_last_fall < TRAILING_FRAMES:
@@ -208,7 +218,29 @@ def send_telegram_alert(token, chat_id, message, frame_bgr=None, track_id=0, cur
         hailo_logger.error("Failed to send Telegram alert: %s", e)
 
 
-def check_fall_detection(user_data, track_id, bbox, points, frame_bgr):
+def should_trigger_alert(user_data, track_id):
+    current_time = time.time()
+
+    # If the person has not been seen falling for over FALL_RESET_SECONDS, reset their backoff
+    if current_time - user_data.last_seen_fallen_time.get(track_id, 0.0) > FALL_RESET_SECONDS:
+        user_data.fall_backoff[track_id] = INITIAL_FALL_DEBOUNCE_SECONDS
+
+    user_data.last_seen_fallen_time[track_id] = current_time
+
+    # Exponential backoff: alert at most once every current_backoff seconds per tracked person
+    current_backoff = user_data.fall_backoff.get(track_id, INITIAL_FALL_DEBOUNCE_SECONDS)
+
+    if current_time - user_data.last_alert_time.get(track_id, 0.0) > current_backoff:
+        user_data.last_alert_time[track_id] = current_time
+        user_data.fall_backoff[track_id] = min(current_backoff * 2, MAX_FALL_DEBOUNCE_SECONDS)
+        
+        print(f"FALL DETECTED: Person ID {track_id} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (Next alert in {user_data.fall_backoff[track_id]}s)")
+        return True
+        
+    return False
+
+
+def check_fall_detection(user_data, track_id, bbox, points):
     # 1. Bounding box wider than tall → person is horizontal
     is_horizontal_shape = bbox.width() / (bbox.height() + 1e-6) > 1.0
 
@@ -240,33 +272,6 @@ def check_fall_detection(user_data, track_id, bbox, points, frame_bgr):
         if z_xmin <= mid_x <= z_xmax and z_ymin <= mid_y <= z_ymax:
             hailo_logger.debug("Horizontal pose in safe zone (Person ID %d) — resting.", track_id)
             return False
-
-    current_time = time.time()
-
-    # If the person has not been seen falling for over FALL_RESET_SECONDS, reset their backoff
-    if current_time - user_data.last_seen_fallen_time.get(track_id, 0.0) > FALL_RESET_SECONDS:
-        user_data.fall_backoff[track_id] = INITIAL_FALL_DEBOUNCE_SECONDS
-
-    user_data.last_seen_fallen_time[track_id] = current_time
-
-    # Exponential backoff: alert at most once every current_backoff seconds per tracked person
-    current_backoff = user_data.fall_backoff.get(track_id, INITIAL_FALL_DEBOUNCE_SECONDS)
-
-    if current_time - user_data.last_alert_time.get(track_id, 0.0) > current_backoff:
-        user_data.last_alert_time[track_id] = current_time
-        user_data.fall_backoff[track_id] = min(current_backoff * 2, MAX_FALL_DEBOUNCE_SECONDS)
-
-        print(f"FALL DETECTED: Person ID {track_id} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (Next alert in {user_data.fall_backoff[track_id]}s)")
-
-        if user_data.telegram_token and user_data.telegram_chat_id:
-            alert_msg = f"⚠️ FALL DETECTED!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            image_to_send = frame_bgr.copy() if frame_bgr is not None else None
-            t = threading.Thread(
-                target=send_telegram_alert,
-                args=(user_data.telegram_token, user_data.telegram_chat_id, alert_msg, image_to_send, track_id, current_time),
-                daemon=True,
-            )
-            t.start()
 
     return True
 
