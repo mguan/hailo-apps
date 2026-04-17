@@ -115,9 +115,22 @@ def app_callback(element, buffer, user_data):
 
     if user_data.video_storage_path and frame is not None:
         if user_data.use_frame:
-            frame_vid = frame_bgr
+            frame_vid = frame_bgr.copy()
         else:
             frame_vid = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            
+        if getattr(user_data, 'show_time', False):
+            current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cv2.putText(
+                frame_vid,
+                current_time_str,
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
             
         if person_detected:
             user_data.frames_since_last_person = 0
@@ -238,6 +251,7 @@ def main():
 
     app = GStreamerPoseEstimationApp(app_callback, user_data, parser=parser)
     user_data.video_storage_path = getattr(app.options_menu, "video_storage", None)
+    user_data.show_time = getattr(app.options_menu, "show_time", False)
     
     app.run()
     
