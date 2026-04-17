@@ -110,6 +110,12 @@ class GStreamerPoseEstimationApp(GStreamerApp):
             f"{user_callback_pipeline} ! "
             f"{display_pipeline}"
         )
+        
+        if getattr(self.options_menu, "show_time", False):
+            overlay_str = 'clockoverlay time-format="%Y-%m-%d %H:%M:%S" font-desc="Sans 12" valignment=top halignment=left shaded-background=true ! '
+            if " ! fpsdisplaysink" in pipeline_string:
+                pipeline_string = pipeline_string.replace(" ! fpsdisplaysink", f" ! {overlay_str}fpsdisplaysink")
+        
         hailo_logger.debug("Pipeline string: %s", pipeline_string)
         return pipeline_string
 

@@ -25,6 +25,7 @@ from hailo_apps.python.core.common.buffer_utils import (
 
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
+from hailo_apps.python.core.common.core import get_pipeline_parser
 
 hailo_logger = get_logger(__name__)
 # endregion imports
@@ -139,7 +140,15 @@ def get_keypoints():
 def main():
     hailo_logger.info("Starting Pose Estimation App.")
     user_data = user_app_callback_class()
-    app = GStreamerPoseEstimationApp(app_callback, user_data)
+    
+    parser = get_pipeline_parser()
+    parser.add_argument(
+        "--show-time", 
+        action="store_true", 
+        help="Overlay current date and time on the screen"
+    )
+
+    app = GStreamerPoseEstimationApp(app_callback, user_data, parser=parser)    
     app.run()
 
 
