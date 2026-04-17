@@ -43,8 +43,8 @@ hailo_logger = get_logger(__name__)
 class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
-        self.fall_detector = FallDetector()
-        self.presence_detector = PresenceDetector()
+        self.fall_detector = FallDetector(safe_zones=[(0.5, 0.5, 1.0, 1.0)])
+        self.presence_detector = PresenceDetector(door_zones=[(0.25, 0.0, 0.75, 0.5)])
         self.alert_manager = AlertManager()
         self.video_recorder = EventVideoRecorder()
 
@@ -109,6 +109,20 @@ def app_callback(element, buffer, user_data):
                     cv2.circle(frame_bgr, (x, y), 5, (0, 255, 0), -1)
 
     if user_data.use_frame and frame_bgr is not None:
+        # Draw safe zones (Green)
+        for z_xmin, z_ymin, z_xmax, z_ymax in user_data.fall_detector.safe_zones:
+            cv2.rectangle(frame_bgr, 
+                          (int(z_xmin * width), int(z_ymin * height)),
+                          (int(z_xmax * width), int(z_ymax * height)),
+                          (0, 255, 0), 2)
+                          
+        # Draw door zones (Blue)
+        for z_xmin, z_ymin, z_xmax, z_ymax in user_data.presence_detector.door_zones:
+            cv2.rectangle(frame_bgr, 
+                          (int(z_xmin * width), int(z_ymin * height)),
+                          (int(z_xmax * width), int(z_ymax * height)),
+                          (255, 0, 0), 2)
+
         user_data.set_frame(frame_bgr)
 
     presence_events = user_data.presence_detector.update(current_tracks)
