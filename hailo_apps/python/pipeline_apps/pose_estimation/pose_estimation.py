@@ -85,12 +85,34 @@ def app_callback(element, buffer, user_data):
             if landmarks:
                 points = landmarks[0].get_points()
                 
-                # Fall detection: Check if nose is below both hips (y increases downwards)
-                nose = points[keypoints["nose"]]
+                # 1. Bounding Box Aspect Ratio Check
+                aspect_ratio = bbox.width() / (bbox.height() + 1e-6)
+                is_horizontal_shape = aspect_ratio > 1.0
+
+                # 2. Torso Angle Check
+                left_shoulder = points[keypoints["left_shoulder"]]
+                right_shoulder = points[keypoints["right_shoulder"]]
                 left_hip = points[keypoints["left_hip"]]
                 right_hip = points[keypoints["right_hip"]]
+
+                shoulder_mid_x = (left_shoulder.x() + right_shoulder.x()) / 2
+                shoulder_mid_y = (left_shoulder.y() + right_shoulder.y()) / 2
+                hip_mid_x = (left_hip.x() + right_hip.x()) / 2
+                hip_mid_y = (left_hip.y() + right_hip.y()) / 2
+
+                dx = hip_mid_x - shoulder_mid_x
+                dy = hip_mid_y - shoulder_mid_y
+
+                is_torso_horizontal = abs(dx) > abs(dy)
+
+                # 3. Head Position Check
+                nose = points[keypoints["nose"]]
                 
-                if nose.y() > left_hip.y() and nose.y() > right_hip.y():
+                # Is the nose below the hips?
+                is_head_low = nose.y() > left_hip.y() and nose.y() > right_hip.y()
+
+                # Combine heuristics
+                if is_torso_horizontal and is_head_low and is_horizontal_shape:
                     current_time = time.time()
                     last_time = user_data.last_fall_time.get(track_id, 0.0)
                     if current_time - last_time > 10.0:  # 10 seconds debounce
