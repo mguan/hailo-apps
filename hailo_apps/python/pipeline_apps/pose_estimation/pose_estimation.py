@@ -3,6 +3,7 @@
 import os
 import time
 import argparse
+import subprocess
 import threading
 import urllib.request
 import urllib.parse
@@ -121,7 +122,7 @@ def app_callback(element, buffer, user_data):
         landmarks = detection.get_objects_typed(hailo.HAILO_LANDMARKS)
         if landmarks:
             points = landmarks[0].get_points()
-            if check_fall_detection(user_data, track_id, bbox, points):
+            if check_fall_detection(user_data, track_id, bbox, points, frame_bgr):
                 fall_detected = True
 
             if user_data.use_frame and frame_bgr is not None:
@@ -187,20 +188,36 @@ def _write_video_frame(user_data, frame_bgr, width, height, fall_detected):
         user_data.video_writer.write(frame_to_write)
 
 
-def send_telegram_alert(token, chat_id, message):
+def send_telegram_alert(token, chat_id, message, frame_bgr=None, track_id=0, current_time=0):
     if not token or not chat_id:
         return
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = urllib.parse.urlencode({
-        "chat_id": chat_id,
-        "text": message,
-    }).encode("utf-8")
-    
+        
     try:
-        req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/x-www-form-urlencoded'})
-        with urllib.request.urlopen(req, timeout=5) as response:
-            if response.status != 200:
-                hailo_logger.error("Telegram API returned status %d", response.status)
+        if frame_bgr is not None:
+            snapshot_path = f"/tmp/fall_snapshot_{track_id}_{int(current_time)}.jpg"
+            cv2.imwrite(snapshot_path, frame_bgr)
+            subprocess.Popen(
+                [
+                    "curl", "-s",
+                    "-F", f"chat_id={chat_id}",
+                    "-F", f"photo=@{snapshot_path}",
+                    "-F", f"caption={message}",
+                    f"https://api.telegram.org/bot{token}/sendPhoto"
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        else:
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            payload = urllib.parse.urlencode({
+                "chat_id": chat_id,
+                "text": message,
+            }).encode("utf-8")
+            
+            req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/x-www-form-urlencoded'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status != 200:
+                    hailo_logger.error("Telegram API returned status %d", response.status)
     except urllib.error.HTTPError as e:
         error_msg = e.read().decode('utf-8')
         hailo_logger.error("Telegram API HTTPError: %s - %s", e, error_msg)
@@ -208,7 +225,7 @@ def send_telegram_alert(token, chat_id, message):
         hailo_logger.error("Failed to send Telegram alert: %s", e)
 
 
-def check_fall_detection(user_data, track_id, bbox, points):
+def check_fall_detection(user_data, track_id, bbox, points, frame_bgr):
     # 1. Bounding box wider than tall → person is horizontal
     is_horizontal_shape = bbox.width() / (bbox.height() + 1e-6) > 1.0
 
@@ -249,9 +266,11 @@ def check_fall_detection(user_data, track_id, bbox, points):
 
         if user_data.telegram_token and user_data.telegram_chat_id:
             alert_msg = f"⚠️ FALL DETECTED!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            
+            image_to_send = frame_bgr.copy() if frame_bgr is not None else None
             t = threading.Thread(
                 target=send_telegram_alert,
-                args=(user_data.telegram_token, user_data.telegram_chat_id, alert_msg),
+                args=(user_data.telegram_token, user_data.telegram_chat_id, alert_msg, image_to_send, track_id, current_time),
                 daemon=True
             )
             t.start()
