@@ -51,6 +51,7 @@ class FallDetector:
         right_hip = points[KEYPOINTS["right_hip"]]
 
         shoulder_mid_x = (left_shoulder.x() + right_shoulder.x()) / 2
+        shoulder_mid_y = (left_shoulder.y() + right_shoulder.y()) / 2
         hip_mid_x = (left_hip.x() + right_hip.x()) / 2
         hip_mid_y = (left_hip.y() + right_hip.y()) / 2
 
