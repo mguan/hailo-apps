@@ -92,55 +92,7 @@ def app_callback(element, buffer, user_data):
             if landmarks:
                 points = landmarks[0].get_points()
                 
-                # 1. Bounding Box Aspect Ratio Check
-                aspect_ratio = bbox.width() / (bbox.height() + 1e-6)
-                is_horizontal_shape = aspect_ratio > 1.0
-
-                # 2. Torso Angle Check
-                left_shoulder = points[keypoints["left_shoulder"]]
-                right_shoulder = points[keypoints["right_shoulder"]]
-                left_hip = points[keypoints["left_hip"]]
-                right_hip = points[keypoints["right_hip"]]
-
-                shoulder_mid_x = (left_shoulder.x() + right_shoulder.x()) / 2
-                shoulder_mid_y = (left_shoulder.y() + right_shoulder.y()) / 2
-                hip_mid_x = (left_hip.x() + right_hip.x()) / 2
-                hip_mid_y = (left_hip.y() + right_hip.y()) / 2
-
-                dx = hip_mid_x - shoulder_mid_x
-                dy = hip_mid_y - shoulder_mid_y
-
-                is_torso_horizontal = abs(dx) > abs(dy)
-
-                # 3. Head Position Check
-                nose = points[keypoints["nose"]]
-                
-                # Is the nose below the hips?
-                is_head_low = nose.y() > left_hip.y() and nose.y() > right_hip.y()
-
-                # Combine heuristics
-                if is_torso_horizontal and is_head_low and is_horizontal_shape:
-                    in_safe_zone = False
-                    
-                    # Compute center of the person's bounding box
-                    mid_x = bbox.xmin() + (bbox.width() / 2.0)
-                    mid_y = bbox.ymin() + (bbox.height() / 2.0)
-                    
-                    # Check if center falls inside any predefined exclusion zone
-                    for (z_xmin, z_ymin, z_xmax, z_ymax) in user_data.safe_zones:
-                        if z_xmin <= mid_x <= z_xmax and z_ymin <= mid_y <= z_ymax:
-                            in_safe_zone = True
-                            break
-                    
-                    if not in_safe_zone:
-                        current_time = time.time()
-                        last_time = user_data.last_fall_time.get(track_id, 0.0)
-                        if current_time - last_time > 10.0:  # 10 seconds debounce
-                            user_data.last_fall_time[track_id] = current_time
-                            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            print(f"FALL DETECTED: Person ID {track_id} at {timestamp}")
-                    else:
-                        hailo_logger.debug(f"Horizontal pose detected in SAFE ZONE (Person ID {track_id}). Interpreting as rest/sleep.")
+                check_fall_detection(user_data, track_id, bbox, points, keypoints)
 
                 for eye in ["left_eye", "right_eye"]:
                     keypoint_index = keypoints[eye]
@@ -157,6 +109,58 @@ def app_callback(element, buffer, user_data):
 
     # print(string_to_print)
     return
+
+
+def check_fall_detection(user_data, track_id, bbox, points, keypoints):
+    # 1. Bounding Box Aspect Ratio Check
+    aspect_ratio = bbox.width() / (bbox.height() + 1e-6)
+    is_horizontal_shape = aspect_ratio > 1.0
+
+    # 2. Torso Angle Check
+    left_shoulder = points[keypoints["left_shoulder"]]
+    right_shoulder = points[keypoints["right_shoulder"]]
+    left_hip = points[keypoints["left_hip"]]
+    right_hip = points[keypoints["right_hip"]]
+
+    shoulder_mid_x = (left_shoulder.x() + right_shoulder.x()) / 2
+    shoulder_mid_y = (left_shoulder.y() + right_shoulder.y()) / 2
+    hip_mid_x = (left_hip.x() + right_hip.x()) / 2
+    hip_mid_y = (left_hip.y() + right_hip.y()) / 2
+
+    dx = hip_mid_x - shoulder_mid_x
+    dy = hip_mid_y - shoulder_mid_y
+
+    is_torso_horizontal = abs(dx) > abs(dy)
+
+    # 3. Head Position Check
+    nose = points[keypoints["nose"]]
+    
+    # Is the nose below the hips?
+    is_head_low = nose.y() > left_hip.y() and nose.y() > right_hip.y()
+
+    # Combine heuristics
+    if is_torso_horizontal and is_head_low and is_horizontal_shape:
+        in_safe_zone = False
+        
+        # Compute center of the person's bounding box
+        mid_x = bbox.xmin() + (bbox.width() / 2.0)
+        mid_y = bbox.ymin() + (bbox.height() / 2.0)
+        
+        # Check if center falls inside any predefined exclusion zone
+        for (z_xmin, z_ymin, z_xmax, z_ymax) in user_data.safe_zones:
+            if z_xmin <= mid_x <= z_xmax and z_ymin <= mid_y <= z_ymax:
+                in_safe_zone = True
+                break
+        
+        if not in_safe_zone:
+            current_time = time.time()
+            last_time = user_data.last_fall_time.get(track_id, 0.0)
+            if current_time - last_time > 10.0:  # 10 seconds debounce
+                user_data.last_fall_time[track_id] = current_time
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(f"FALL DETECTED: Person ID {track_id} at {timestamp}")
+        else:
+            hailo_logger.debug(f"Horizontal pose detected in SAFE ZONE (Person ID {track_id}). Interpreting as rest/sleep.")
 
 
 def get_keypoints():
