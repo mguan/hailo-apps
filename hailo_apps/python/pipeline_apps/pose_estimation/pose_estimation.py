@@ -53,7 +53,10 @@ KEYPOINTS = {
 }
 
 # Number of frames to keep recording after the last fall detection
-TRAILING_FRAMES = 30
+TRAILING_FRAMES = 150
+
+# Minimum seconds between fall alert logs for a single tracked person
+FALL_DEBOUNCE_SECONDS = 10.0
 
 
 # -----------------------------------------------------------------------------------------------
@@ -211,9 +214,9 @@ def check_fall_detection(user_data, track_id, bbox, points):
             hailo_logger.debug("Horizontal pose in safe zone (Person ID %d) — resting.", track_id)
             return False
 
-    # Debounce: alert at most once every 10 seconds per tracked person
+    # Debounce: alert at most once every FALL_DEBOUNCE_SECONDS per tracked person
     current_time = time.time()
-    if current_time - user_data.last_fall_time.get(track_id, 0.0) > 10.0:
+    if current_time - user_data.last_fall_time.get(track_id, 0.0) > FALL_DEBOUNCE_SECONDS:
         user_data.last_fall_time[track_id] = current_time
         print(f"FALL DETECTED: Person ID {track_id} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
