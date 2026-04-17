@@ -112,7 +112,7 @@ class GStreamerPoseEstimationApp(GStreamerApp):
         )
         
         if getattr(self.options_menu, "show_time", False):
-            overlay_str = 'clockoverlay time-format="%Y-%m-%d %H:%M:%S" font-desc="Sans 12" valignment=top halignment=left shaded-background=true ! '
+            overlay_str = 'clockoverlay time-format="%Y-%m-%d %H:%M:%S" font-desc="Sans 10" valignment=top halignment=left shaded-background=true ! '
             if " ! fpsdisplaysink" in pipeline_string:
                 pipeline_string = pipeline_string.replace(" ! fpsdisplaysink", f" ! {overlay_str}fpsdisplaysink")
         
