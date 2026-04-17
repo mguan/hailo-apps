@@ -51,17 +51,12 @@ class FallDetector:
         right_hip = points[KEYPOINTS["right_hip"]]
 
         shoulder_mid_x = (left_shoulder.x() + right_shoulder.x()) / 2
-        shoulder_mid_y = (left_shoulder.y() + right_shoulder.y()) / 2
         hip_mid_x = (left_hip.x() + right_hip.x()) / 2
         hip_mid_y = (left_hip.y() + right_hip.y()) / 2
 
         is_torso_horizontal = abs(hip_mid_x - shoulder_mid_x) > abs(hip_mid_y - shoulder_mid_y)
 
-        # 3. Nose below hip midpoint -> head is near the ground
-        nose = points[KEYPOINTS["nose"]]
-        is_head_low = nose.y() > hip_mid_y
-
-        if not (is_horizontal_shape and is_torso_horizontal and is_head_low):
+        if not (is_horizontal_shape and is_torso_horizontal):
             return False
 
         # Check whether the person is inside a predefined safe zone (e.g. a bed)
