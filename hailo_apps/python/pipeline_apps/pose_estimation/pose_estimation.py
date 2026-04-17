@@ -2,6 +2,7 @@
 # Standard library imports
 import os
 import time
+import argparse
 from datetime import datetime
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
@@ -130,6 +131,21 @@ def app_callback(element, buffer, user_data):
 
 def _write_video_frame(user_data, frame_bgr, width, height, fall_detected):
     """Start/stop event recording and write the current frame."""
+    
+    # Are we in an active recording state?
+    is_writing = fall_detected or (
+        user_data.video_writer is not None and user_data.frames_since_last_fall < TRAILING_FRAMES
+    )
+
+    if not is_writing:
+        # Time to close out an active recording?
+        if user_data.video_writer is not None:
+            hailo_logger.info("Fall resolved, finishing event video.")
+            user_data.video_writer.release()
+            user_data.video_writer = None
+        return
+
+    # We are writing! Prepare the frame safely.
     frame_to_write = frame_bgr.copy()
 
     if user_data.show_time:
@@ -157,14 +173,9 @@ def _write_video_frame(user_data, frame_bgr, width, height, fall_detected):
             )
             hailo_logger.info("Started recording fall event video to: %s", filename)
         user_data.video_writer.write(frame_to_write)
-    elif user_data.video_writer is not None:
+    else:
         user_data.frames_since_last_fall += 1
-        if user_data.frames_since_last_fall < TRAILING_FRAMES:
-            user_data.video_writer.write(frame_to_write)
-        else:
-            hailo_logger.info("Fall resolved, finishing event video.")
-            user_data.video_writer.release()
-            user_data.video_writer = None
+        user_data.video_writer.write(frame_to_write)
 
 
 def check_fall_detection(user_data, track_id, bbox, points):
@@ -216,7 +227,7 @@ def main():
     parser = get_pipeline_parser()
     parser.add_argument(
         "--show-time",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=True,
         help="Overlay current date and time on the video",
     )
