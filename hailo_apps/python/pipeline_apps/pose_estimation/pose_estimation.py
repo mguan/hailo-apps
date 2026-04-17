@@ -45,7 +45,6 @@ class user_app_callback_class(app_callback_class):
         self.fall_detector = FallDetector()
         self.alert_manager = AlertManager()
         self.video_recorder = EventVideoRecorder()
-        self.last_fallen_track_id = 0
 
 
 # -----------------------------------------------------------------------------------------------
@@ -88,11 +87,13 @@ def app_callback(element, buffer, user_data):
             points = landmarks[0].get_points()
             if user_data.fall_detector.is_fall_detected(track_id, bbox, points):
                 fall_detected = True
-                user_data.last_fallen_track_id = track_id
                 if user_data.fall_detector.should_trigger_alert(track_id):
                     alert_msg = f"⚠️ Fall detected!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                     print(alert_msg)
                     user_data.alert_manager.send_alert(alert_msg, image=frame_bgr)
+            elif user_data.fall_detector.is_fall_resolved(track_id):
+                resolve_msg = f"✅ Fall event resolved\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                user_data.alert_manager.send_alert(resolve_msg)
 
             if user_data.use_frame and frame_bgr is not None:
                 for eye in ["left_eye", "right_eye"]:
@@ -104,10 +105,7 @@ def app_callback(element, buffer, user_data):
     if user_data.use_frame and frame_bgr is not None:
         user_data.set_frame(frame_bgr)
 
-    just_resolved = user_data.video_recorder.write_frame(frame_bgr, width, height, fall_detected)
-    if just_resolved:
-        resolve_msg = f"✅ Fall event resolved\nPerson ID: {user_data.last_fallen_track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        user_data.alert_manager.send_alert(resolve_msg)
+    user_data.video_recorder.write_frame(frame_bgr, width, height, fall_detected)
 
 
 

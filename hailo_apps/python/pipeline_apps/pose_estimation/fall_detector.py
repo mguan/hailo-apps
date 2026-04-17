@@ -30,7 +30,7 @@ INITIAL_FALL_DEBOUNCE_SECONDS = 5.0
 MAX_FALL_DEBOUNCE_SECONDS = 3600.0
 
 # Seconds a person must remain untracked as falling to reset the alarm backoff
-FALL_RESET_SECONDS = 10.0
+FALL_RESET_SECONDS = 5.0
 
 
 class FallDetector:
@@ -74,6 +74,16 @@ class FallDetector:
                 return False
 
         return True
+
+    def is_fall_resolved(self, track_id) -> bool:
+        """Returns True once when a previously-falling person has not been seen falling for FALL_RESET_SECONDS."""
+        if track_id not in self.last_seen_fallen_time:
+            return False
+        if time.time() - self.last_seen_fallen_time[track_id] > FALL_RESET_SECONDS:
+            del self.last_seen_fallen_time[track_id]
+            self.fall_backoff.pop(track_id, None)
+            return True
+        return False
 
     def should_trigger_alert(self, track_id):
         current_time = time.time()
