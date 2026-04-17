@@ -76,9 +76,7 @@ class user_app_callback_class(app_callback_class):
         self.fall_backoff = {}
         # Safe zones (normalized coords: x_min, y_min, x_max, y_max).
         # Persons whose bounding box center falls inside a safe zone are treated as resting.
-        self.safe_zones = [
-            (0.0, 0.0, 0.0, 0.0)
-        ]
+        self.safe_zones = []
         self.event_storage_path = None
         self.show_time = False
         self.telegram_token = None
@@ -127,9 +125,9 @@ def app_callback(element, buffer, user_data):
             points = landmarks[0].get_points()
             if check_fall_detection(user_data, track_id, bbox, points):
                 fall_detected = True
-                
-                if user_data.telegram_token and user_data.telegram_chat_id and should_trigger_alert(user_data, track_id):
-                    send_telegram_alert(user_data.telegram_token, user_data.telegram_chat_id, track_id, frame_bgr)
+                if should_trigger_alert(user_data, track_id):
+                    if user_data.telegram_token and user_data.telegram_chat_id:
+                        send_telegram_alert(user_data.telegram_token, user_data.telegram_chat_id, track_id, frame_bgr)
 
             if user_data.use_frame and frame_bgr is not None:
                 for eye in ["left_eye", "right_eye"]:
