@@ -67,7 +67,7 @@ class user_app_callback_class(app_callback_class):
         self.safe_zones = [
             (0.5, 0.5, 1.0, 1.0)  # bottom-right quadrant
         ]
-        self.video_storage_path = None
+        self.event_storage_path = None
         self.show_time = False
         self.video_writer = None
         self.frames_since_last_fall = 0
@@ -88,7 +88,7 @@ def app_callback(element, buffer, user_data):
 
     # Decode frame once; used for both display and video recording
     frame_bgr = None
-    if (user_data.use_frame or user_data.video_storage_path) and format and width and height:
+    if (user_data.use_frame or user_data.event_storage_path) and format and width and height:
         frame = get_numpy_from_buffer(buffer, format, width, height)
         frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
@@ -124,7 +124,7 @@ def app_callback(element, buffer, user_data):
     if user_data.use_frame and frame_bgr is not None:
         user_data.set_frame(frame_bgr)
 
-    if user_data.video_storage_path and frame_bgr is not None:
+    if user_data.event_storage_path and frame_bgr is not None:
         _write_video_frame(user_data, frame_bgr, width, height, fall_detected)
 
 
@@ -147,9 +147,9 @@ def _write_video_frame(user_data, frame_bgr, width, height, fall_detected):
     if fall_detected:
         user_data.frames_since_last_fall = 0
         if user_data.video_writer is None:
-            os.makedirs(user_data.video_storage_path, exist_ok=True)
+            os.makedirs(user_data.event_storage_path, exist_ok=True)
             filename = os.path.join(
-                user_data.video_storage_path,
+                user_data.event_storage_path,
                 f"fall_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
             )
             user_data.video_writer = cv2.VideoWriter(
@@ -217,18 +217,19 @@ def main():
     parser.add_argument(
         "--show-time",
         action="store_true",
+        default=True,
         help="Overlay current date and time on the video",
     )
     parser.add_argument(
-        "--video-storage",
+        "--event-storage-path",
         type=str,
-        default=None,
+        default="/tmp",
         help="Directory for saving event videos when a fall is detected",
     )
 
     app = GStreamerPoseEstimationApp(app_callback, user_data, parser=parser)
-    user_data.video_storage_path = getattr(app.options_menu, "video_storage", None)
-    user_data.show_time = getattr(app.options_menu, "show_time", False)
+    user_data.event_storage_path = getattr(app.options_menu, "event_storage_path", "/tmp")
+    user_data.show_time = getattr(app.options_menu, "show_time", True)
 
     app.run()
 
