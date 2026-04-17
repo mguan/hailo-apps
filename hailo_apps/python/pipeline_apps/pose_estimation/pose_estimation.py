@@ -93,7 +93,7 @@ def app_callback(element, buffer, user_data):
                     user_data.alert_manager.send_alert(alert_msg, image=frame_bgr)
             elif user_data.fall_detector.is_fall_resolved(track_id):
                 resolve_msg = f"✅ Fall event resolved\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                user_data.alert_manager.send_alert(resolve_msg)
+                user_data.alert_manager.send_alert(resolve_msg, image=frame_bgr)
 
             if user_data.use_frame and frame_bgr is not None:
                 for eye in ["left_eye", "right_eye"]:
