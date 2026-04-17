@@ -3,6 +3,10 @@
 import os
 import time
 import argparse
+import threading
+import urllib.request
+import urllib.parse
+import json
 from datetime import datetime
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
@@ -73,6 +77,8 @@ class user_app_callback_class(app_callback_class):
         ]
         self.event_storage_path = None
         self.show_time = False
+        self.telegram_token = None
+        self.telegram_chat_id = None
         self.video_writer = None
         self.frames_since_last_fall = 0
 
@@ -181,6 +187,27 @@ def _write_video_frame(user_data, frame_bgr, width, height, fall_detected):
         user_data.video_writer.write(frame_to_write)
 
 
+def send_telegram_alert(token, chat_id, message):
+    if not token or not chat_id:
+        return
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = urllib.parse.urlencode({
+        "chat_id": chat_id,
+        "text": message,
+    }).encode("utf-8")
+    
+    try:
+        req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/x-www-form-urlencoded'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            if response.status != 200:
+                hailo_logger.error("Telegram API returned status %d", response.status)
+    except urllib.error.HTTPError as e:
+        error_msg = e.read().decode('utf-8')
+        hailo_logger.error("Telegram API HTTPError: %s - %s", e, error_msg)
+    except Exception as e:
+        hailo_logger.error("Failed to send Telegram alert: %s", e)
+
+
 def check_fall_detection(user_data, track_id, bbox, points):
     # 1. Bounding box wider than tall → person is horizontal
     is_horizontal_shape = bbox.width() / (bbox.height() + 1e-6) > 1.0
@@ -220,6 +247,15 @@ def check_fall_detection(user_data, track_id, bbox, points):
         user_data.last_fall_time[track_id] = current_time
         print(f"FALL DETECTED: Person ID {track_id} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
+        if user_data.telegram_token and user_data.telegram_chat_id:
+            alert_msg = f"⚠️ FALL DETECTED!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            t = threading.Thread(
+                target=send_telegram_alert,
+                args=(user_data.telegram_token, user_data.telegram_chat_id, alert_msg),
+                daemon=True
+            )
+            t.start()
+
     return True
 
 
@@ -241,9 +277,24 @@ def main():
         help="Directory for saving event videos when a fall is detected",
     )
 
+    parser.add_argument(
+        "--telegram-token",
+        type=str,
+        default=None,
+        help="Telegram Bot Token for sending remote fall alerts",
+    )
+    parser.add_argument(
+        "--telegram-chat-id",
+        type=str,
+        default=None,
+        help="Telegram Chat ID to receive remote fall alerts",
+    )
+
     app = GStreamerPoseEstimationApp(app_callback, user_data, parser=parser)
     user_data.event_storage_path = getattr(app.options_menu, "event_storage_path", "/tmp")
     user_data.show_time = getattr(app.options_menu, "show_time", True)
+    user_data.telegram_token = getattr(app.options_menu, "telegram_token", None)
+    user_data.telegram_chat_id = getattr(app.options_menu, "telegram_chat_id", None)
 
     app.run()
 
