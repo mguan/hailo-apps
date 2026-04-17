@@ -61,7 +61,11 @@ KEYPOINTS = {
 TRAILING_FRAMES = 150
 
 # Minimum seconds between fall alert logs for a single tracked person
-FALL_DEBOUNCE_SECONDS = 10.0
+INITIAL_FALL_DEBOUNCE_SECONDS = 5.0
+MAX_FALL_DEBOUNCE_SECONDS = 3600.0
+
+# Seconds a person must remain untracked as falling to reset the alarm backoff
+FALL_RESET_SECONDS = 10.0
 
 
 # -----------------------------------------------------------------------------------------------
@@ -70,7 +74,9 @@ FALL_DEBOUNCE_SECONDS = 10.0
 class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
-        self.last_fall_time = {}
+        self.last_alert_time = {}
+        self.last_seen_fallen_time = {}
+        self.fall_backoff = {}
         # Safe zones (normalized coords: x_min, y_min, x_max, y_max).
         # Persons whose bounding box center falls inside a safe zone are treated as resting.
         self.safe_zones = [
@@ -258,11 +264,22 @@ def check_fall_detection(user_data, track_id, bbox, points, frame_bgr):
             hailo_logger.debug("Horizontal pose in safe zone (Person ID %d) — resting.", track_id)
             return False
 
-    # Debounce: alert at most once every FALL_DEBOUNCE_SECONDS per tracked person
     current_time = time.time()
-    if current_time - user_data.last_fall_time.get(track_id, 0.0) > FALL_DEBOUNCE_SECONDS:
-        user_data.last_fall_time[track_id] = current_time
-        print(f"FALL DETECTED: Person ID {track_id} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    # If the person has not been seen falling for over FALL_RESET_SECONDS seconds, reset their backoff
+    if current_time - user_data.last_seen_fallen_time.get(track_id, 0.0) > FALL_RESET_SECONDS:
+        user_data.fall_backoff[track_id] = INITIAL_FALL_DEBOUNCE_SECONDS
+
+    user_data.last_seen_fallen_time[track_id] = current_time
+
+    # Exponential backoff: alert at most once every current_backoff seconds per tracked person
+    current_backoff = user_data.fall_backoff.get(track_id, INITIAL_FALL_DEBOUNCE_SECONDS)
+    
+    if current_time - user_data.last_alert_time.get(track_id, 0.0) > current_backoff:
+        user_data.last_alert_time[track_id] = current_time
+        user_data.fall_backoff[track_id] = min(current_backoff * 2, MAX_FALL_DEBOUNCE_SECONDS)
+        
+        print(f"FALL DETECTED: Person ID {track_id} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (Next alert in {user_data.fall_backoff[track_id]}s)")
 
         if user_data.telegram_token and user_data.telegram_chat_id:
             alert_msg = f"⚠️ FALL DETECTED!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
