@@ -5,9 +5,6 @@ import time
 import argparse
 import subprocess
 import threading
-import urllib.request
-import urllib.parse
-import json
 from datetime import datetime
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
@@ -146,24 +143,18 @@ def app_callback(element, buffer, user_data):
 
 
 def _write_video_frame(user_data, frame_bgr, width, height, fall_detected):
-    """Start/stop event recording and write the current frame."""
-    
-    # Are we in an active recording state?
-    is_writing = fall_detected or (
-        user_data.video_writer is not None and user_data.frames_since_last_fall < TRAILING_FRAMES
-    )
-
-    if not is_writing:
-        # Time to close out an active recording?
+    if fall_detected:
+        user_data.frames_since_last_fall = 0
+    elif user_data.video_writer is not None and user_data.frames_since_last_fall < TRAILING_FRAMES:
+        user_data.frames_since_last_fall += 1
+    else:
         if user_data.video_writer is not None:
             hailo_logger.info("Fall resolved, finishing event video.")
             user_data.video_writer.release()
             user_data.video_writer = None
         return
 
-    # We are writing! Prepare the frame safely.
     frame_to_write = frame_bgr.copy()
-
     if user_data.show_time:
         cv2.putText(
             frame_to_write,
@@ -176,57 +167,43 @@ def _write_video_frame(user_data, frame_bgr, width, height, fall_detected):
             cv2.LINE_AA,
         )
 
-    if fall_detected:
-        user_data.frames_since_last_fall = 0
-        if user_data.video_writer is None:
-            os.makedirs(user_data.event_storage_path, exist_ok=True)
-            filename = os.path.join(
-                user_data.event_storage_path,
-                f"fall_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
-            )
-            user_data.video_writer = cv2.VideoWriter(
-                filename, cv2.VideoWriter_fourcc(*"mp4v"), 30.0, (width, height)
-            )
-            hailo_logger.info("Started recording fall event video to: %s", filename)
-        user_data.video_writer.write(frame_to_write)
-    else:
-        user_data.frames_since_last_fall += 1
-        user_data.video_writer.write(frame_to_write)
+    if user_data.video_writer is None:
+        os.makedirs(user_data.event_storage_path, exist_ok=True)
+        filename = os.path.join(
+            user_data.event_storage_path,
+            f"fall_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
+        )
+        user_data.video_writer = cv2.VideoWriter(
+            filename, cv2.VideoWriter_fourcc(*"mp4v"), 30.0, (width, height)
+        )
+        hailo_logger.info("Started recording fall event video to: %s", filename)
+
+    user_data.video_writer.write(frame_to_write)
 
 
 def send_telegram_alert(token, chat_id, message, frame_bgr=None, track_id=0, current_time=0):
     if not token or not chat_id:
         return
-        
+
     try:
         if frame_bgr is not None:
             snapshot_path = f"/tmp/fall_snapshot_{track_id}_{int(current_time)}.jpg"
             cv2.imwrite(snapshot_path, frame_bgr)
-            subprocess.Popen(
-                [
-                    "curl", "-s",
-                    "-F", f"chat_id={chat_id}",
-                    "-F", f"photo=@{snapshot_path}",
-                    "-F", f"caption={message}",
-                    f"https://api.telegram.org/bot{token}/sendPhoto"
-                ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
+            cmd = [
+                "curl", "-s",
+                "-F", f"chat_id={chat_id}",
+                "-F", f"photo=@{snapshot_path}",
+                "-F", f"caption={message}",
+                f"https://api.telegram.org/bot{token}/sendPhoto",
+            ]
         else:
-            url = f"https://api.telegram.org/bot{token}/sendMessage"
-            payload = urllib.parse.urlencode({
-                "chat_id": chat_id,
-                "text": message,
-            }).encode("utf-8")
-            
-            req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/x-www-form-urlencoded'})
-            with urllib.request.urlopen(req, timeout=5) as response:
-                if response.status != 200:
-                    hailo_logger.error("Telegram API returned status %d", response.status)
-    except urllib.error.HTTPError as e:
-        error_msg = e.read().decode('utf-8')
-        hailo_logger.error("Telegram API HTTPError: %s - %s", e, error_msg)
+            cmd = [
+                "curl", "-s",
+                "-d", f"chat_id={chat_id}",
+                "--data-urlencode", f"text={message}",
+                f"https://api.telegram.org/bot{token}/sendMessage",
+            ]
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
         hailo_logger.error("Failed to send Telegram alert: %s", e)
 
@@ -266,7 +243,7 @@ def check_fall_detection(user_data, track_id, bbox, points, frame_bgr):
 
     current_time = time.time()
 
-    # If the person has not been seen falling for over FALL_RESET_SECONDS seconds, reset their backoff
+    # If the person has not been seen falling for over FALL_RESET_SECONDS, reset their backoff
     if current_time - user_data.last_seen_fallen_time.get(track_id, 0.0) > FALL_RESET_SECONDS:
         user_data.fall_backoff[track_id] = INITIAL_FALL_DEBOUNCE_SECONDS
 
@@ -274,21 +251,20 @@ def check_fall_detection(user_data, track_id, bbox, points, frame_bgr):
 
     # Exponential backoff: alert at most once every current_backoff seconds per tracked person
     current_backoff = user_data.fall_backoff.get(track_id, INITIAL_FALL_DEBOUNCE_SECONDS)
-    
+
     if current_time - user_data.last_alert_time.get(track_id, 0.0) > current_backoff:
         user_data.last_alert_time[track_id] = current_time
         user_data.fall_backoff[track_id] = min(current_backoff * 2, MAX_FALL_DEBOUNCE_SECONDS)
-        
+
         print(f"FALL DETECTED: Person ID {track_id} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (Next alert in {user_data.fall_backoff[track_id]}s)")
 
         if user_data.telegram_token and user_data.telegram_chat_id:
             alert_msg = f"⚠️ FALL DETECTED!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            
             image_to_send = frame_bgr.copy() if frame_bgr is not None else None
             t = threading.Thread(
                 target=send_telegram_alert,
                 args=(user_data.telegram_token, user_data.telegram_chat_id, alert_msg, image_to_send, track_id, current_time),
-                daemon=True
+                daemon=True,
             )
             t.start()
 
@@ -312,7 +288,6 @@ def main():
         default="/tmp",
         help="Directory for saving event videos when a fall is detected",
     )
-
     parser.add_argument(
         "--telegram-token",
         type=str,
