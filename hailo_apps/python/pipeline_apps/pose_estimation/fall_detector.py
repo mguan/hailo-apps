@@ -81,7 +81,14 @@ class FallDetector:
             return True
         return False
 
-    def should_trigger_alert(self, track_id):
+    def check_alert_throttle(self, track_id) -> bool:
+        """
+        Updates the internal state tracking the time a fall was detected for a person,
+        and applies an exponential backoff delay to determine if a new alert should be sent.
+        
+        Returns:
+            bool: True if an alert should be dispatched now, False if the alert is throttled.
+        """
         current_time = time.time()
 
         # If the person has not been seen falling for over FALL_RESET_SECONDS, reset their backoff

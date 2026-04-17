@@ -87,7 +87,7 @@ def app_callback(element, buffer, user_data):
             points = landmarks[0].get_points()
             if user_data.fall_detector.is_fall_detected(track_id, bbox, points):
                 fall_detected = True
-                if user_data.fall_detector.should_trigger_alert(track_id):
+                if user_data.fall_detector.check_alert_throttle(track_id):
                     alert_msg = f"⚠️ Fall detected!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                     print(alert_msg)
                     user_data.alert_manager.send_alert(alert_msg, image=frame_bgr)
