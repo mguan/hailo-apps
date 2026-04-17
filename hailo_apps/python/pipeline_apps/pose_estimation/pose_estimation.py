@@ -51,7 +51,7 @@ KEYPOINTS = {
     "right_ankle": 16,
 }
 
-# Number of frames to keep recording after the last person detection
+# Number of frames to keep recording after the last fall detection
 TRAILING_FRAMES = 30
 
 
@@ -70,7 +70,7 @@ class user_app_callback_class(app_callback_class):
         self.video_storage_path = None
         self.show_time = False
         self.video_writer = None
-        self.frames_since_last_person = 0
+        self.frames_since_last_fall = 0
 
 
 # -----------------------------------------------------------------------------------------------
@@ -94,13 +94,12 @@ def app_callback(element, buffer, user_data):
 
     roi = hailo.get_roi_from_buffer(buffer)
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
-    person_detected = False
+    fall_detected = False
 
     for detection in detections:
         if detection.get_label() != "person":
             continue
 
-        person_detected = True
         bbox = detection.get_bbox()
         track_id = 0
         track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
@@ -112,7 +111,8 @@ def app_callback(element, buffer, user_data):
         landmarks = detection.get_objects_typed(hailo.HAILO_LANDMARKS)
         if landmarks:
             points = landmarks[0].get_points()
-            check_fall_detection(user_data, track_id, bbox, points)
+            if check_fall_detection(user_data, track_id, bbox, points):
+                fall_detected = True
 
             if user_data.use_frame and frame_bgr is not None:
                 for eye in ["left_eye", "right_eye"]:
@@ -125,10 +125,10 @@ def app_callback(element, buffer, user_data):
         user_data.set_frame(frame_bgr)
 
     if user_data.video_storage_path and frame_bgr is not None:
-        _write_video_frame(user_data, frame_bgr, width, height, person_detected)
+        _write_video_frame(user_data, frame_bgr, width, height, fall_detected)
 
 
-def _write_video_frame(user_data, frame_bgr, width, height, person_detected):
+def _write_video_frame(user_data, frame_bgr, width, height, fall_detected):
     """Start/stop event recording and write the current frame."""
     frame_to_write = frame_bgr.copy()
 
@@ -144,25 +144,25 @@ def _write_video_frame(user_data, frame_bgr, width, height, person_detected):
             cv2.LINE_AA,
         )
 
-    if person_detected:
-        user_data.frames_since_last_person = 0
+    if fall_detected:
+        user_data.frames_since_last_fall = 0
         if user_data.video_writer is None:
             os.makedirs(user_data.video_storage_path, exist_ok=True)
             filename = os.path.join(
                 user_data.video_storage_path,
-                f"event_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
+                f"fall_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
             )
             user_data.video_writer = cv2.VideoWriter(
                 filename, cv2.VideoWriter_fourcc(*"mp4v"), 30.0, (width, height)
             )
-            hailo_logger.info("Started recording event video to: %s", filename)
+            hailo_logger.info("Started recording fall event video to: %s", filename)
         user_data.video_writer.write(frame_to_write)
     elif user_data.video_writer is not None:
-        user_data.frames_since_last_person += 1
-        if user_data.frames_since_last_person < TRAILING_FRAMES:
+        user_data.frames_since_last_fall += 1
+        if user_data.frames_since_last_fall < TRAILING_FRAMES:
             user_data.video_writer.write(frame_to_write)
         else:
-            hailo_logger.info("Person left, finishing event video.")
+            hailo_logger.info("Fall resolved, finishing event video.")
             user_data.video_writer.release()
             user_data.video_writer = None
 
@@ -189,7 +189,7 @@ def check_fall_detection(user_data, track_id, bbox, points):
     is_head_low = nose.y() > left_hip.y() and nose.y() > right_hip.y()
 
     if not (is_horizontal_shape and is_torso_horizontal and is_head_low):
-        return
+        return False
 
     # Check whether the person is inside a predefined safe zone (e.g. a bed)
     mid_x = bbox.xmin() + bbox.width() / 2.0
@@ -198,13 +198,15 @@ def check_fall_detection(user_data, track_id, bbox, points):
     for z_xmin, z_ymin, z_xmax, z_ymax in user_data.safe_zones:
         if z_xmin <= mid_x <= z_xmax and z_ymin <= mid_y <= z_ymax:
             hailo_logger.debug("Horizontal pose in safe zone (Person ID %d) — resting.", track_id)
-            return
+            return False
 
     # Debounce: alert at most once every 10 seconds per tracked person
     current_time = time.time()
     if current_time - user_data.last_fall_time.get(track_id, 0.0) > 10.0:
         user_data.last_fall_time[track_id] = current_time
         print(f"FALL DETECTED: Person ID {track_id} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    return True
 
 
 def main():
@@ -221,7 +223,7 @@ def main():
         "--video-storage",
         type=str,
         default=None,
-        help="Directory for saving event videos when a person is detected",
+        help="Directory for saving event videos when a fall is detected",
     )
 
     app = GStreamerPoseEstimationApp(app_callback, user_data, parser=parser)
