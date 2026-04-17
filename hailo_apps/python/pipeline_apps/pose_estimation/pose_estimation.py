@@ -92,8 +92,8 @@ def app_callback(element, buffer, user_data):
                 fall_detected = True
                 should_alert, next_backoff = user_data.fall_detector.should_trigger_alert(track_id)
                 if should_alert:
-                    print(f"Fall detected: Person ID {track_id} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (Next alert in {next_backoff}s)")
                     alert_msg = f"⚠️ Fall detected!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    print(alert_msg)
                     user_data.alert_manager.send_alert(alert_msg, image=frame_bgr)
 
             if user_data.use_frame and frame_bgr is not None:
