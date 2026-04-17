@@ -130,7 +130,7 @@ def app_callback(element, buffer, user_data):
                 fall_detected = True
                 if should_trigger_alert(user_data, track_id):
                     if user_data.telegram_token and user_data.telegram_chat_id:
-                        alert_msg = f"⚠️ FALL DETECTED!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                        alert_msg = f"⚠️ Fall detected!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                         send_telegram_alert(user_data.telegram_token, user_data.telegram_chat_id, alert_msg, track_id, frame_bgr)
 
             if user_data.use_frame and frame_bgr is not None:
@@ -159,7 +159,7 @@ def write_video_frame(user_data, frame_bgr, width, height, fall_detected, track_
             user_data.video_writer = None
             
             if user_data.telegram_token and user_data.telegram_chat_id:
-                resolve_msg = f"✅ FALL EVENT RESOLVED\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                resolve_msg = f"✅ Fall event resolved\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 send_telegram_alert(user_data.telegram_token, user_data.telegram_chat_id, resolve_msg, track_id=track_id, frame_bgr=frame_bgr)
         return
 
@@ -193,7 +193,8 @@ def write_video_frame(user_data, frame_bgr, width, height, fall_detected, track_
 def _execute_telegram_alert(token, chat_id, track_id, image_to_send, current_time, message):
     try:
         if image_to_send is not None:
-            snapshot_path = f"/tmp/fall_snapshot_{track_id}_{int(current_time)}.jpg"
+            time_str = datetime.fromtimestamp(current_time).strftime('%Y%m%d_%H%M%S')
+            snapshot_path = f"/tmp/fall_snapshot_{track_id}_{time_str}.jpg"
             cv2.imwrite(snapshot_path, image_to_send)
             cmd = [
                 "curl", "-s",
@@ -243,7 +244,7 @@ def should_trigger_alert(user_data, track_id):
         user_data.last_alert_time[track_id] = current_time
         user_data.fall_backoff[track_id] = min(current_backoff * 2, MAX_FALL_DEBOUNCE_SECONDS)
         
-        print(f"FALL DETECTED: Person ID {track_id} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (Next alert in {user_data.fall_backoff[track_id]}s)")
+        print(f"Fall detected: Person ID {track_id} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (Next alert in {user_data.fall_backoff[track_id]}s)")
         return True
         
     return False
