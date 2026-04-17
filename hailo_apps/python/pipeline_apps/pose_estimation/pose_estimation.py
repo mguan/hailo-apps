@@ -129,14 +129,7 @@ def app_callback(element, buffer, user_data):
                 fall_detected = True
                 
                 if user_data.telegram_token and user_data.telegram_chat_id and should_trigger_alert(user_data, track_id):
-                    alert_msg = f"⚠️ FALL DETECTED!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                    image_to_send = frame_bgr.copy() if frame_bgr is not None else None
-                    t = threading.Thread(
-                        target=send_telegram_alert,
-                        args=(user_data.telegram_token, user_data.telegram_chat_id, alert_msg, image_to_send, track_id, time.time()),
-                        daemon=True,
-                    )
-                    t.start()
+                    send_telegram_alert(user_data.telegram_token, user_data.telegram_chat_id, track_id, frame_bgr)
 
             if user_data.use_frame and frame_bgr is not None:
                 for eye in ["left_eye", "right_eye"]:
@@ -191,14 +184,12 @@ def write_video_frame(user_data, frame_bgr, width, height, fall_detected):
     user_data.video_writer.write(frame_to_write)
 
 
-def send_telegram_alert(token, chat_id, message, frame_bgr=None, track_id=0, current_time=0):
-    if not token or not chat_id:
-        return
-
+def _execute_telegram_alert(token, chat_id, track_id, image_to_send, current_time):
+    message = f"⚠️ FALL DETECTED!\nPerson ID: {track_id}\nTime: {datetime.fromtimestamp(current_time).strftime('%Y-%m-%d %H:%M:%S')}"
     try:
-        if frame_bgr is not None:
+        if image_to_send is not None:
             snapshot_path = f"/tmp/fall_snapshot_{track_id}_{int(current_time)}.jpg"
-            cv2.imwrite(snapshot_path, frame_bgr)
+            cv2.imwrite(snapshot_path, image_to_send)
             cmd = [
                 "curl", "-s",
                 "-F", f"chat_id={chat_id}",
@@ -215,7 +206,19 @@ def send_telegram_alert(token, chat_id, message, frame_bgr=None, track_id=0, cur
             ]
         subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
-        hailo_logger.error("Failed to send Telegram alert: %s", e)
+        hailo_logger.error("Failed to execute Telegram alert: %s", e)
+
+
+def send_telegram_alert(token, chat_id, track_id, frame_bgr):
+    if not token or not chat_id:
+        return
+    image_to_send = frame_bgr.copy() if frame_bgr is not None else None
+    t = threading.Thread(
+        target=_execute_telegram_alert,
+        args=(token, chat_id, track_id, image_to_send, time.time()),
+        daemon=True,
+    )
+    t.start()
 
 
 def should_trigger_alert(user_data, track_id):
