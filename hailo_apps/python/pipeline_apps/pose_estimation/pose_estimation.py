@@ -31,6 +31,7 @@ from hailo_apps.python.core.common.core import get_pipeline_parser
 from hailo_apps.python.pipeline_apps.pose_estimation.fall_detector import FallDetector, KEYPOINTS
 from hailo_apps.python.pipeline_apps.pose_estimation.alert_manager import AlertManager, TelegramAlertProvider
 from hailo_apps.python.pipeline_apps.pose_estimation.video_recorder import EventVideoRecorder
+from hailo_apps.python.pipeline_apps.pose_estimation.presence_detector import PresenceDetector
 
 hailo_logger = get_logger(__name__)
 # endregion imports
@@ -43,6 +44,7 @@ class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
         self.fall_detector = FallDetector()
+        self.presence_detector = PresenceDetector()
         self.alert_manager = AlertManager()
         self.video_recorder = EventVideoRecorder()
 
@@ -69,6 +71,7 @@ def app_callback(element, buffer, user_data):
     roi = hailo.get_roi_from_buffer(buffer)
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
     fall_detected = False
+    current_tracks = {}
 
     for detection in detections:
         if detection.get_label() != "person":
@@ -79,6 +82,9 @@ def app_callback(element, buffer, user_data):
         track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
         if len(track) == 1:
             track_id = track[0].get_id()
+
+        if track_id > 0:
+            current_tracks[track_id] = bbox
 
         hailo_logger.debug("Detection: ID=%d Confidence=%.2f", track_id, detection.get_confidence())
 
@@ -105,7 +111,21 @@ def app_callback(element, buffer, user_data):
     if user_data.use_frame and frame_bgr is not None:
         user_data.set_frame(frame_bgr)
 
-    user_data.video_recorder.write_frame(frame_bgr, width, height, fall_detected)
+    presence_events = user_data.presence_detector.update(current_tracks)
+    for event in presence_events:
+        event_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        if event["type"] == "entry":
+            msg = f"🚪 Person Entered!\nPerson ID: {event['track_id']}\nTime: {event_time}"
+            user_data.alert_manager.send_alert(msg, image=frame_bgr)
+            print(msg)
+        elif event["type"] == "exit":
+            msg = f"🚪 Person Exited.\nPerson ID: {event['track_id']}\nTime: {event_time}"
+            user_data.alert_manager.send_alert(msg, image=frame_bgr)
+            print(msg)
+
+    presence_active = len(user_data.presence_detector.active_presences) > 0
+    event_active = fall_detected or presence_active
+    user_data.video_recorder.write_frame(frame_bgr, width, height, event_active)
 
 
 
