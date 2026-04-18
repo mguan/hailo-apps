@@ -44,9 +44,12 @@ class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
         self.fall_detector = FallDetector(safe_zones=[(0.5, 0.5, 1.0, 1.0)])
-        self.presence_detector = PresenceDetector(door_zones=[(0.25, 0.0, 0.75, 0.5)])
+        self.presence_detector = PresenceDetector(door_zones=[(0.25, 0.1, 0.4, 0.4)])
         self.alert_manager = AlertManager()
         self.video_recorder = EventVideoRecorder()
+
+    def generate_alert_message(self, message, track_id):
+        return f"{message} Person ID: [{track_id}]. Time: [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
 
 
 # -----------------------------------------------------------------------------------------------
@@ -107,11 +110,12 @@ def app_callback(element, buffer, user_data):
             if user_data.fall_detector.is_fall_detected(track_id, bbox, points):
                 fall_detected = True
                 if user_data.fall_detector.check_alert_throttle(track_id):
-                    alert_msg = f"⚠️ Fall detected!\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                    print(alert_msg)
+                    alert_msg = user_data.generate_alert_message("⚠️ Fall detected!", track_id)
+                    hailo_logger.warning(alert_msg)
                     user_data.alert_manager.send_alert(alert_msg, image=frame_bgr)
             elif user_data.fall_detector.is_fall_resolved(track_id):
-                resolve_msg = f"✅ Fall event resolved\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                resolve_msg = user_data.generate_alert_message("✅ Fall event resolved.", track_id)
+                hailo_logger.info(resolve_msg)
                 user_data.alert_manager.send_alert(resolve_msg, image=frame_bgr)
 
             if frame_bgr is not None:
@@ -141,19 +145,14 @@ def app_callback(element, buffer, user_data):
 
     presence_events = user_data.presence_detector.update(current_tracks)
     for event in presence_events:
-        event_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         if event["type"] == "entry":
-            msg = f"🚪 Person Entered!\nPerson ID: {event['track_id']}\nTime: {event_time}"
-            user_data.alert_manager.send_alert(msg, image=frame_bgr)
-            print(msg)
+            alert_msg = user_data.generate_alert_message("🚪 Person Entered!", event['track_id'])
+            hailo_logger.info(alert_msg)
         elif event["type"] == "exit":
-            msg = f"🚪 Person Exited.\nPerson ID: {event['track_id']}\nTime: {event_time}"
-            user_data.alert_manager.send_alert(msg, image=frame_bgr)
-            print(msg)
+            alert_msg = user_data.generate_alert_message("🚪 Person Exited.", event['track_id'])
+            hailo_logger.info(alert_msg)
 
-    presence_active = len(user_data.presence_detector.active_presences) > 0
-    event_active = fall_detected or presence_active
-    user_data.video_recorder.write_frame(frame_bgr, width, height, event_active)
+    user_data.video_recorder.write_frame(frame_bgr, width, height, fall_detected)
 
 
 
