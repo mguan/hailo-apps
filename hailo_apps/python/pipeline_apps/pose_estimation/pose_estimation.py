@@ -109,12 +109,12 @@ def app_callback(element, buffer, user_data):
             points = landmarks[0].get_points()
             if user_data.fall_detector.is_fall_detected(track_id, bbox, points):
                 fall_detected = True
-                if user_data.fall_detector.check_alert_throttle(track_id):
+                if user_data.fall_detector.should_send_alert(track_id):
                     alert_msg = user_data.generate_alert_message("⚠️ Fall detected!", track_id)
                     hailo_logger.warning(alert_msg)
                     user_data.alert_manager.send_alert(alert_msg, image=frame_bgr)
 
-    resolved_falls = user_data.fall_detector.get_resolved_falls()
+    resolved_falls = user_data.fall_detector.pop_resolved_falls()
     for track_id in resolved_falls:
         resolve_msg = user_data.generate_alert_message("✅ Fall event resolved.", track_id)
         hailo_logger.info(resolve_msg)

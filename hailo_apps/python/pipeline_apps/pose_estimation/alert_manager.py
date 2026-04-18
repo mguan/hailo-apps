@@ -1,3 +1,4 @@
+import os
 import time
 import cv2
 import threading
@@ -20,10 +21,11 @@ class TelegramAlertProvider(AlertProvider):
         self.chat_id = chat_id
 
     def _execute_telegram_alert(self, image_to_send, current_time, message):
+        snapshot_path = None
         try:
             if image_to_send is not None:
                 time_str = datetime.fromtimestamp(current_time).strftime('%Y%m%d_%H%M%S')
-                snapshot_path = f"/tmp/fall_snapshot_{time_str}.jpg"
+                snapshot_path = f"/tmp/alert_snapshot_{time_str}.jpg"
                 cv2.imwrite(snapshot_path, image_to_send)
                 cmd = [
                     "curl", "-s",
@@ -39,9 +41,15 @@ class TelegramAlertProvider(AlertProvider):
                     "--data-urlencode", f"text={message}",
                     f"https://api.telegram.org/bot{self.token}/sendMessage",
                 ]
-            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:
             hailo_logger.error("Failed to execute Telegram alert: %s", e)
+        finally:
+            if snapshot_path:
+                try:
+                    os.remove(snapshot_path)
+                except OSError:
+                    pass
 
     def send_alert(self, message: str, image=None):
         image_to_send = image.copy() if image is not None else None

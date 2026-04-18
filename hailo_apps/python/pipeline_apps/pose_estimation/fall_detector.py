@@ -71,8 +71,8 @@ class FallDetector:
 
         return True
 
-    def get_resolved_falls(self) -> list:
-        """Returns a list of track IDs for persons previously falling who have not been seen falling for FALL_RESET_SECONDS."""
+    def pop_resolved_falls(self) -> list:
+        """Removes and returns track IDs of persons who have not been seen falling for FALL_RESET_SECONDS."""
         resolved_ids = []
         current_time = time.time()
         for track_id, last_time in list(self.last_seen_fallen_time.items()):
@@ -82,13 +82,10 @@ class FallDetector:
                 resolved_ids.append(track_id)
         return resolved_ids
 
-    def check_alert_throttle(self, track_id) -> bool:
+    def should_send_alert(self, track_id) -> bool:
         """
-        Updates the internal state tracking the time a fall was detected for a person,
-        and applies an exponential backoff delay to determine if a new alert should be sent.
-        
-        Returns:
-            bool: True if an alert should be dispatched now, False if the alert is throttled.
+        Updates fall tracking state and returns True if an alert should be sent now.
+        Applies exponential backoff per track ID.
         """
         current_time = time.time()
 
