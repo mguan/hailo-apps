@@ -132,7 +132,6 @@ def app_callback(element, buffer, user_data):
     user_data.video_recorder.write_frame(frame_bgr, width, height, fall_detected)
 
 
-
 def main():
     hailo_logger.info("Starting Pose Estimation App.")
     user_data = user_app_callback_class()
