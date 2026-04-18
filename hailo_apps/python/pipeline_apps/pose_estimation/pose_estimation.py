@@ -113,35 +113,12 @@ def app_callback(element, buffer, user_data):
                     alert_msg = user_data.generate_alert_message("⚠️ Fall detected!", track_id)
                     hailo_logger.warning(alert_msg)
                     user_data.alert_manager.send_alert(alert_msg, image=frame_bgr)
-            elif user_data.fall_detector.is_fall_resolved(track_id):
-                resolve_msg = user_data.generate_alert_message("✅ Fall event resolved.", track_id)
-                hailo_logger.info(resolve_msg)
-                user_data.alert_manager.send_alert(resolve_msg, image=frame_bgr)
 
-            if frame_bgr is not None:
-                for eye in ["left_eye", "right_eye"]:
-                    point = points[KEYPOINTS[eye]]
-                    x = int((point.x() * bbox.width() + bbox.xmin()) * width)
-                    y = int((point.y() * bbox.height() + bbox.ymin()) * height)
-                    cv2.circle(frame_bgr, (x, y), 5, (0, 255, 0), -1)
-
-    if frame_bgr is not None:
-        # Draw safe zones (Green)
-        for z_xmin, z_ymin, z_xmax, z_ymax in user_data.fall_detector.safe_zones:
-            cv2.rectangle(frame_bgr, 
-                          (int(z_xmin * width), int(z_ymin * height)),
-                          (int(z_xmax * width), int(z_ymax * height)),
-                          (0, 255, 0), 2)
-                          
-        # Draw door zones (Blue)
-        for z_xmin, z_ymin, z_xmax, z_ymax in user_data.presence_detector.door_zones:
-            cv2.rectangle(frame_bgr, 
-                          (int(z_xmin * width), int(z_ymin * height)),
-                          (int(z_xmax * width), int(z_ymax * height)),
-                          (255, 0, 0), 2)
-
-    if user_data.use_frame and frame_bgr is not None:
-        user_data.set_frame(frame_bgr)
+    resolved_falls = user_data.fall_detector.get_resolved_falls()
+    for track_id in resolved_falls:
+        resolve_msg = user_data.generate_alert_message("✅ Fall event resolved.", track_id)
+        hailo_logger.info(resolve_msg)
+        user_data.alert_manager.send_alert(resolve_msg, image=frame_bgr)
 
     presence_events = user_data.presence_detector.update(current_tracks)
     for event in presence_events:

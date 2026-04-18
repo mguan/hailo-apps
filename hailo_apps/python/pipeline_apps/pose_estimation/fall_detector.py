@@ -71,15 +71,16 @@ class FallDetector:
 
         return True
 
-    def is_fall_resolved(self, track_id) -> bool:
-        """Returns True once when a previously-falling person has not been seen falling for FALL_RESET_SECONDS."""
-        if track_id not in self.last_seen_fallen_time:
-            return False
-        if time.time() - self.last_seen_fallen_time[track_id] > FALL_RESET_SECONDS:
-            del self.last_seen_fallen_time[track_id]
-            self.fall_backoff.pop(track_id, None)
-            return True
-        return False
+    def get_resolved_falls(self) -> list:
+        """Returns a list of track IDs for persons previously falling who have not been seen falling for FALL_RESET_SECONDS."""
+        resolved_ids = []
+        current_time = time.time()
+        for track_id, last_time in list(self.last_seen_fallen_time.items()):
+            if current_time - last_time > FALL_RESET_SECONDS:
+                del self.last_seen_fallen_time[track_id]
+                self.fall_backoff.pop(track_id, None)
+                resolved_ids.append(track_id)
+        return resolved_ids
 
     def check_alert_throttle(self, track_id) -> bool:
         """
