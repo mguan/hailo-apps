@@ -69,6 +69,19 @@ def app_callback(element, buffer, user_data):
         frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
     roi = hailo.get_roi_from_buffer(buffer)
+
+    # Add Safe Zones to the inference ROI for HailoOverlay to display
+    for z_xmin, z_ymin, z_xmax, z_ymax in user_data.fall_detector.safe_zones:
+        bbox = hailo.HailoBBox(z_xmin, z_ymin, z_xmax - z_xmin, z_ymax - z_ymin)
+        detection = hailo.HailoDetection(bbox, "Safe Zone", 1.0)
+        roi.add_object(detection)
+
+    # Add Door Zones to the inference ROI for HailoOverlay to display
+    for z_xmin, z_ymin, z_xmax, z_ymax in user_data.presence_detector.door_zones:
+        bbox = hailo.HailoBBox(z_xmin, z_ymin, z_xmax - z_xmin, z_ymax - z_ymin)
+        detection = hailo.HailoDetection(bbox, "Door Zone", 1.0)
+        roi.add_object(detection)
+
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
     fall_detected = False
     current_tracks = {}
@@ -101,14 +114,14 @@ def app_callback(element, buffer, user_data):
                 resolve_msg = f"✅ Fall event resolved\nPerson ID: {track_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 user_data.alert_manager.send_alert(resolve_msg, image=frame_bgr)
 
-            if user_data.use_frame and frame_bgr is not None:
+            if frame_bgr is not None:
                 for eye in ["left_eye", "right_eye"]:
                     point = points[KEYPOINTS[eye]]
                     x = int((point.x() * bbox.width() + bbox.xmin()) * width)
                     y = int((point.y() * bbox.height() + bbox.ymin()) * height)
                     cv2.circle(frame_bgr, (x, y), 5, (0, 255, 0), -1)
 
-    if user_data.use_frame and frame_bgr is not None:
+    if frame_bgr is not None:
         # Draw safe zones (Green)
         for z_xmin, z_ymin, z_xmax, z_ymax in user_data.fall_detector.safe_zones:
             cv2.rectangle(frame_bgr, 
@@ -123,6 +136,7 @@ def app_callback(element, buffer, user_data):
                           (int(z_xmax * width), int(z_ymax * height)),
                           (255, 0, 0), 2)
 
+    if user_data.use_frame and frame_bgr is not None:
         user_data.set_frame(frame_bgr)
 
     presence_events = user_data.presence_detector.update(current_tracks)
