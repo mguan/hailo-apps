@@ -161,10 +161,17 @@ def main():
         default=None,
         help="Telegram Chat ID to receive remote fall alerts",
     )
+    parser.add_argument(
+        "--test-alert",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Flag to continuously fire alerts while a fall is detected (bypasses debounce)",
+    )
 
     app = GStreamerPoseEstimationApp(app_callback, user_data, parser=parser)
     user_data.video_recorder.event_storage_path = getattr(app.options_menu, "event_storage_path", "/tmp")
     user_data.video_recorder.show_time = getattr(app.options_menu, "show_time", True)
+    user_data.fall_detector.test_alert = getattr(app.options_menu, "test_alert", False)
     telegram_token = getattr(app.options_menu, "telegram_token", None)
     telegram_chat_id = getattr(app.options_menu, "telegram_chat_id", None)
 

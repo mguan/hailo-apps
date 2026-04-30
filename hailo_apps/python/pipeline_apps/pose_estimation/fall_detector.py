@@ -30,15 +30,16 @@ INITIAL_FALL_DEBOUNCE_SECONDS = 5.0
 MAX_FALL_DEBOUNCE_SECONDS = 3600.0
 
 # Seconds a person must remain untracked as falling to reset the alarm backoff
-FALL_RESET_SECONDS = 5.0
+FALL_RESET_SECONDS = 600.0
 
 
 class FallDetector:
-    def __init__(self, safe_zones=None):
+    def __init__(self, safe_zones=None, test_alert=False):
         self.safe_zones = safe_zones or []
         self.last_alert_time = {}
         self.last_seen_fallen_time = {}
         self.fall_backoff = {}
+        self.test_alert = test_alert
 
     def is_fall_detected(self, track_id, bbox, points):
         # 1. Bounding box wider than tall -> person is horizontal
@@ -87,6 +88,9 @@ class FallDetector:
         Updates fall tracking state and returns True if an alert should be sent now.
         Applies exponential backoff per track ID.
         """
+        if self.test_alert:
+            return True
+
         current_time = time.time()
 
         # If the person has not been seen falling for over FALL_RESET_SECONDS, reset their backoff
