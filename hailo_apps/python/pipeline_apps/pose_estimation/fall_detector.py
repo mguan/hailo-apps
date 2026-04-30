@@ -30,7 +30,7 @@ INITIAL_FALL_DEBOUNCE_SECONDS = 5.0
 MAX_FALL_DEBOUNCE_SECONDS = 3600.0
 
 # Seconds a person must remain untracked as falling to reset the alarm backoff
-FALL_RESET_SECONDS = 600.0
+FALL_RESET_SECONDS = 60.0
 
 
 class FallDetector:
