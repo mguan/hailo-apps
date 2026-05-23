@@ -1,16 +1,13 @@
 # region imports
 # Standard library imports
-from pathlib import Path
+import os
 
+# Third-party imports
 import setproctitle
 
-from hailo_apps.python.core.common.core import (
-    get_pipeline_parser,
-)
-from hailo_apps.python.core.common.defines import (
-    DETECTION_APP_TITLE,
-)
-
+# Local application-specific imports
+from hailo_apps.python.core.common.core import get_pipeline_parser
+from hailo_apps.python.core.common.defines import DETECTION_APP_TITLE
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import (
     GStreamerApp,
@@ -23,18 +20,54 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
 )
 
 hailo_logger = get_logger(__name__)
-
 # endregion imports
+
 
 # -----------------------------------------------------------------------------------------------
 # User Gstreamer Application
 # -----------------------------------------------------------------------------------------------
-
-
 class GStreamerDetectionApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         if parser is None:
             parser = get_pipeline_parser()
+        self._add_arguments(parser)
+
+        hailo_logger.info("Initializing GStreamer Detection App...")
+        super().__init__(parser, user_data)
+
+        if self.options_menu.no_display:
+            self.video_sink = "fakesink"
+
+        opts = self.options_menu
+        self.user_data.motion_detect = opts.motion_detect
+        self.user_data.record_clips = opts.record_clips
+        self.user_data.motion_min_area = opts.motion_min_area
+        self.user_data.motion_threshold = opts.motion_threshold
+        self.user_data.output_dir = opts.output_dir
+        self.user_data.fps = float(self.frame_rate) if self.frame_rate else 30.0
+
+        if opts.record_clips:
+            os.makedirs(opts.output_dir, exist_ok=True)
+
+        hailo_logger.debug(
+            "Parent GStreamerApp initialized | arch=%s | input=%s | fps=%s | sync=%s | show_fps=%s",
+            self.arch,
+            self.video_source,
+            self.frame_rate,
+            self.sync,
+            self.show_fps,
+        )
+
+        self.app_callback = app_callback
+
+        setproctitle.setproctitle(DETECTION_APP_TITLE)
+        hailo_logger.debug("Process title set to %s", DETECTION_APP_TITLE)
+
+        self.create_pipeline()
+        hailo_logger.debug("Pipeline created")
+
+    @staticmethod
+    def _add_arguments(parser):
         parser.add_argument(
             "--no-display",
             action="store_true",
@@ -43,13 +76,13 @@ class GStreamerDetectionApp(GStreamerApp):
         parser.add_argument(
             "--record-clips",
             action="store_true",
-            help="Dynamically record video clips with timestamps when objects enter/leave the frame",
+            help="Dynamically record video clips with timestamps when motion is detected",
         )
         parser.add_argument(
-            "--motion-detect",
-            action="store_true",
-            default=True,
-            help="Enable OpenCV motion-based recording (always enabled for motion-only mode)",
+            "--no-motion-detect",
+            action="store_false",
+            dest="motion_detect",
+            help="Disable OpenCV motion-based recording (motion detection is on by default)",
         )
         parser.add_argument(
             "--motion-min-area",
@@ -69,39 +102,6 @@ class GStreamerDetectionApp(GStreamerApp):
             default="/home/pi/Videos",
             help="Root directory where dynamic video clips are saved (default: /home/pi/Videos)",
         )
-        
-        hailo_logger.info("Initializing GStreamer Detection App...")
-
-        super().__init__(parser, user_data)
-
-        # Override video sink if headless
-        if self.options_menu.no_display:
-            self.video_sink = "fakesink"
-
-        # Pass options to user_data
-        self.user_data.record_clips = getattr(self.options_menu, "record_clips", False)
-        self.user_data.motion_detect = getattr(self.options_menu, "motion_detect", True)
-        self.user_data.motion_min_area = getattr(self.options_menu, "motion_min_area", 50)
-        self.user_data.motion_threshold = getattr(self.options_menu, "motion_threshold", 15)
-        self.user_data.output_dir = getattr(self.options_menu, "output_dir", "/home/pi/Videos")
-
-        hailo_logger.debug(
-            "Parent GStreamerApp initialized | arch=%s | input=%s | fps=%s | sync=%s | show_fps=%s",
-            self.arch,
-            self.video_source,
-            self.frame_rate,
-            self.sync,
-            self.show_fps,
-        )
-
-        self.app_callback = app_callback
-
-        # Set the process title
-        setproctitle.setproctitle(DETECTION_APP_TITLE)
-        hailo_logger.debug("Process title set to %s", DETECTION_APP_TITLE)
-
-        self.create_pipeline()
-        hailo_logger.debug("Pipeline created")
 
     def get_pipeline_string(self):
         source_pipeline = self.get_source_pipeline()
@@ -120,11 +120,9 @@ class GStreamerDetectionApp(GStreamerApp):
 
 
 def main():
-    # Create an instance of the user app callback class
     hailo_logger.info("Starting Hailo Detection App...")
     user_data = app_callback_class()
-    app_callback = dummy_callback
-    app = GStreamerDetectionApp(app_callback, user_data)
+    app = GStreamerDetectionApp(dummy_callback, user_data)
     app.run()
 
 

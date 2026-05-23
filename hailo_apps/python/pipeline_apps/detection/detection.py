@@ -1,7 +1,8 @@
 # region imports
 # Standard library imports
-import os
 import datetime
+import os
+
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
 # Third-party imports
@@ -11,14 +12,11 @@ gi.require_version("Gst", "1.0")
 import cv2
 
 # Local application-specific imports
-from gi.repository import Gst
-
 from hailo_apps.python.pipeline_apps.detection.detection_pipeline import GStreamerDetectionApp
 from hailo_apps.python.core.common.buffer_utils import (
     get_caps_from_pad,
     get_numpy_from_buffer,
 )
-
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 
@@ -27,154 +25,185 @@ hailo_logger = get_logger(__name__)
 
 
 # -----------------------------------------------------------------------------------------------
+# Motion detection
+# -----------------------------------------------------------------------------------------------
+class MotionDetector:
+    ANALYSIS_WIDTH = 640
+    # higher = background adapts faster (less sensitive to slow motion)
+    BG_LEARNING_RATE = 0.02
+    BLUR_KERNEL = (5, 5)
+
+    def __init__(self, min_area: int, threshold: int):
+        self.min_area = min_area
+        self.threshold = threshold
+        self._avg_frame = None
+
+    def detect(self, rgb_frame, orig_w: int, orig_h: int):
+        analysis_h = int(self.ANALYSIS_WIDTH * orig_h / orig_w)
+        small = cv2.resize(rgb_frame, (self.ANALYSIS_WIDTH, analysis_h))
+        gray = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
+        gray = cv2.GaussianBlur(gray, self.BLUR_KERNEL, 0)
+
+        if self._avg_frame is None:
+            self._avg_frame = gray.copy().astype("float")
+            return []
+
+        cv2.accumulateWeighted(gray, self._avg_frame, self.BG_LEARNING_RATE)
+        delta = cv2.absdiff(gray, cv2.convertScaleAbs(self._avg_frame))
+        thresh = cv2.threshold(delta, self.threshold, 255, cv2.THRESH_BINARY)[1]
+        thresh = cv2.dilate(thresh, None, iterations=2)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        scale = (self.ANALYSIS_WIDTH * analysis_h) / (orig_w * orig_h)
+        scaled_min_area = self.min_area * scale
+        sx = orig_w / self.ANALYSIS_WIDTH
+        sy = orig_h / analysis_h
+
+        boxes = []
+        for c in contours:
+            if cv2.contourArea(c) < scaled_min_area:
+                continue
+            x, y, w, h = cv2.boundingRect(c)
+            boxes.append((int(x * sx), int(y * sy), int((x + w) * sx), int((y + h) * sy)))
+        return boxes
+
+
+# -----------------------------------------------------------------------------------------------
+# Clip recording
+# -----------------------------------------------------------------------------------------------
+class ClipRecorder:
+    COOLDOWN_SECONDS = 3.0
+
+    def __init__(self, output_dir: str, fps: float):
+        self.output_dir = output_dir
+        self.fps = fps
+        self._cooldown_limit = max(1, int(round(self.COOLDOWN_SECONDS * fps)))
+        self._writer = None
+        self._cooldown = 0
+
+    @property
+    def recording(self) -> bool:
+        return self._writer is not None
+
+    def feed(self, frame_bgr, motion: bool, width: int, height: int):
+        if motion:
+            self._cooldown = self._cooldown_limit
+            if not self.recording:
+                self._start(width, height)
+        elif self.recording:
+            if self._cooldown > 0:
+                self._cooldown -= 1
+            else:
+                self._stop()
+                return
+        if self.recording:
+            self._writer.write(frame_bgr)
+
+    def _start(self, width: int, height: int):
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = os.path.join(self.output_dir, f"motion_{timestamp}.mp4")
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        self._writer = cv2.VideoWriter(filename, fourcc, self.fps, (width, height))
+        hailo_logger.info("Motion entered. Started clip recording: %s", filename)
+
+    def _stop(self):
+        self._writer.release()
+        self._writer = None
+        hailo_logger.info("Motion left. Dynamic clip recording stopped.")
+
+
+# -----------------------------------------------------------------------------------------------
 # User-defined class to be used in the callback function
 # -----------------------------------------------------------------------------------------------
 class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
-        self.writer = None
-        self.recording = False
-        self.cooldown_counter = 0
-        self.cooldown_limit = 90  # 90 frames (about 3 seconds at 30fps)
-        self.record_clips = False
+        # Config — populated by the pipeline from CLI options
         self.motion_detect = True
+        self.record_clips = False
         self.motion_min_area = 50
         self.motion_threshold = 15
-        self.avg_frame = None
         self.output_dir = "/home/pi/Videos"
+        self.fps = 30.0
+        # Helper objects — built lazily on the first frame
+        self.motion_detector = None
+        self.recorder = None
+
+
+# -----------------------------------------------------------------------------------------------
+# Drawing helpers
+# -----------------------------------------------------------------------------------------------
+def _ensure_helpers(user_data):
+    if user_data.motion_detector is None:
+        user_data.motion_detector = MotionDetector(
+            user_data.motion_min_area, user_data.motion_threshold
+        )
+    if user_data.record_clips and user_data.recorder is None:
+        user_data.recorder = ClipRecorder(user_data.output_dir, user_data.fps)
+
+
+def _draw_motion_overlay(frame_bgr, boxes):
+    for (xmin, ymin, xmax, ymax) in boxes:
+        cv2.rectangle(frame_bgr, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
+        cv2.putText(
+            frame_bgr, "Motion", (xmin, ymin - 10),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2,
+        )
+
+
+def _draw_hud(frame_bgr, num_zones: int, recording: bool):
+    cv2.putText(
+        frame_bgr, f"Motion Zones: {num_zones}", (10, 30),
+        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2,
+    )
+    if recording:
+        cv2.putText(
+            frame_bgr, "RECORDING", (10, 70),
+            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2,
+        )
+
 
 # -----------------------------------------------------------------------------------------------
 # User-defined callback function
 # -----------------------------------------------------------------------------------------------
-
-
 def app_callback(element, buffer, user_data):
     if buffer is None:
         hailo_logger.warning("Received None buffer.")
         return
 
-    # Note: Frame counting is handled automatically by the framework wrapper
-    frame_idx = user_data.get_count()
+    # Skip entirely if nothing downstream will consume a frame
+    if not user_data.motion_detect or not (user_data.record_clips or user_data.use_frame):
+        return
 
     pad = element.get_static_pad("src")
     format_cap, width, height = get_caps_from_pad(pad)
+    if format_cap is None or width is None or height is None:
+        return
 
-    # Check if recording or display is requested
-    record_clips = getattr(user_data, "record_clips", False)
+    frame = get_numpy_from_buffer(buffer, format_cap, width, height)
+    if frame is None:
+        return
 
-    frame = None
-    if (record_clips or user_data.use_frame) and format_cap is not None and width is not None and height is not None:
-        frame = get_numpy_from_buffer(buffer, format_cap, width, height)
+    _ensure_helpers(user_data)
 
-    motion_detected = False
-    motion_boxes = []
+    frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    motion_boxes = user_data.motion_detector.detect(frame, width, height)
+    motion_detected = bool(motion_boxes)
 
-    # Process frame with OpenCV if available
-    if frame is not None:
-        # Convert RGB → BGR for OpenCV processing and saving
-        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    _draw_motion_overlay(frame_bgr, motion_boxes)
 
-        # Determine analysis resolution (fixed to 640px width for smooth 30 FPS processing)
-        analysis_width = 640
-        analysis_height = int(analysis_width * height / width)
+    if user_data.record_clips:
+        user_data.recorder.feed(frame_bgr, motion_detected, width, height)
 
-        # Downscale for motion detection analysis
-        small_frame = cv2.resize(frame, (analysis_width, analysis_height))
-        gray = cv2.cvtColor(small_frame, cv2.COLOR_RGB2GRAY)
-        gray = cv2.GaussianBlur(gray, (5, 5), 0)
-
-        # Scale the min area threshold based on the resolution reduction
-        scale_factor = (analysis_width * analysis_height) / (width * height)
-        scaled_min_area = user_data.motion_min_area * scale_factor
-
-        if user_data.avg_frame is None:
-            user_data.avg_frame = gray.copy().astype("float")
-        else:
-            # Accumulate background average slowly (0.02 weight) so slow-moving objects are detected
-            cv2.accumulateWeighted(gray, user_data.avg_frame, 0.02)
-            # Compute absolute difference
-            frame_delta = cv2.absdiff(gray, cv2.convertScaleAbs(user_data.avg_frame))
-            # Threshold the difference image
-            thresh = cv2.threshold(frame_delta, user_data.motion_threshold, 255, cv2.THRESH_BINARY)[1]
-            # Dilate
-            thresh = cv2.dilate(thresh, None, iterations=2)
-            # Find contours
-            contours, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-            for contour in contours:
-                if cv2.contourArea(contour) >= scaled_min_area:
-                    motion_detected = True
-                    (x, y, w, h) = cv2.boundingRect(contour)
-                    
-                    # Map coordinates back to the original full resolution
-                    orig_xmin = int(x * width / analysis_width)
-                    orig_ymin = int(y * height / analysis_height)
-                    orig_xmax = int((x + w) * width / analysis_width)
-                    orig_ymax = int((y + h) * height / analysis_height)
-                    motion_boxes.append((orig_xmin, orig_ymin, orig_xmax, orig_ymax))
-
-        # Draw motion bounding boxes on BGR frame
-        for (xmin, ymin, xmax, ymax) in motion_boxes:
-            cv2.rectangle(frame_bgr, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
-            cv2.putText(frame_bgr, "Motion", (xmin, ymin - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-
-        if record_clips:
-            if motion_detected:
-                user_data.cooldown_counter = user_data.cooldown_limit
-                
-                if not user_data.recording:
-                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                    output_dir = getattr(user_data, "output_dir", "/home/pi/Videos")
-                    filename = os.path.join(output_dir, f"motion_{timestamp}.mp4")
-                    # Ensure directory exists before recording
-                    os.makedirs(os.path.dirname(filename), exist_ok=True)
-                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                    fps = 30.0
-                    user_data.writer = cv2.VideoWriter(filename, fourcc, fps, (width, height))
-                    user_data.recording = True
-                    print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Motion entered. Started clip recording: {filename}")
-                    
-                if user_data.writer is not None:
-                    user_data.writer.write(frame_bgr)
-            else:
-                if user_data.recording:
-                    if user_data.cooldown_counter > 0:
-                        user_data.cooldown_counter -= 1
-                        if user_data.writer is not None:
-                            user_data.writer.write(frame_bgr)
-                    else:
-                        if user_data.writer is not None:
-                            user_data.writer.release()
-                            user_data.writer = None
-                        user_data.recording = False
-                        print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Motion left. Dynamic clip recording stopped.")
-
-        if user_data.use_frame:
-            # Draw HUD overlays on display frame
-            cv2.putText(
-                frame_bgr,
-                f"Motion Zones: {len(motion_boxes)}",
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0, 255, 0),
-                2,
-            )
-            if user_data.recording:
-                cv2.putText(
-                    frame_bgr,
-                    "RECORDING",
-                    (10, 70),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (0, 0, 255),
-                    2,
-                )
-            user_data.set_frame(frame_bgr)
+    if user_data.use_frame:
+        recording = user_data.recorder.recording if user_data.recorder else False
+        _draw_hud(frame_bgr, len(motion_boxes), recording)
+        user_data.set_frame(frame_bgr)
 
     if motion_detected:
-        print(f"Frame count: {frame_idx}\nMotion detected: {len(motion_boxes)} zones\n")
-    return
+        hailo_logger.info(
+            "Frame %d | %d motion zone(s)", user_data.get_count(), len(motion_boxes)
+        )
 
 
 def main():
