@@ -7,7 +7,6 @@ import setproctitle
 
 # Local application-specific imports
 from hailo_apps.python.core.common.core import get_pipeline_parser
-from hailo_apps.python.core.common.defines import DETECTION_APP_TITLE
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import (
     GStreamerApp,
@@ -21,6 +20,8 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
 
 hailo_logger = get_logger(__name__)
 # endregion imports
+
+MOTION_RECORDER_APP_TITLE = "motion_recorder"
 
 
 # -----------------------------------------------------------------------------------------------
@@ -60,8 +61,8 @@ class GStreamerDetectionApp(GStreamerApp):
 
         self.app_callback = app_callback
 
-        setproctitle.setproctitle(DETECTION_APP_TITLE)
-        hailo_logger.debug("Process title set to %s", DETECTION_APP_TITLE)
+        setproctitle.setproctitle(MOTION_RECORDER_APP_TITLE)
+        hailo_logger.debug("Process title set to %s", MOTION_RECORDER_APP_TITLE)
 
         self.create_pipeline()
         hailo_logger.debug("Pipeline created")
