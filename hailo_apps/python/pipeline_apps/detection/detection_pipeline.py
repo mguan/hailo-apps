@@ -65,6 +65,23 @@ class GStreamerDetectionApp(GStreamerApp):
             action="store_true",
             help="Dynamically record video clips with timestamps when objects enter/leave the frame",
         )
+        parser.add_argument(
+            "--motion-detect",
+            action="store_true",
+            help="Enable OpenCV motion-based recording (useful for objects/animals not in the detector coco classes)",
+        )
+        parser.add_argument(
+            "--motion-min-area",
+            type=int,
+            default=500,
+            help="Minimum contour area to consider as motion (default: 500)",
+        )
+        parser.add_argument(
+            "--motion-threshold",
+            type=int,
+            default=25,
+            help="Threshold value for frame differencing (default: 25)",
+        )
         
         # Handle --list-models flag before full initialization
         handle_list_models_flag(parser, DETECTION_PIPELINE)
@@ -77,8 +94,11 @@ class GStreamerDetectionApp(GStreamerApp):
         if self.options_menu.no_display:
             self.video_sink = "fakesink"
 
-        # Pass record_clips flag to user_data
+        # Pass record_clips and motion options to user_data
         self.user_data.record_clips = getattr(self.options_menu, "record_clips", False)
+        self.user_data.motion_detect = getattr(self.options_menu, "motion_detect", False)
+        self.user_data.motion_min_area = getattr(self.options_menu, "motion_min_area", 500)
+        self.user_data.motion_threshold = getattr(self.options_menu, "motion_threshold", 25)
 
         hailo_logger.debug(
             "Parent GStreamerApp initialized | arch=%s | input=%s | fps=%s | sync=%s | show_fps=%s",
