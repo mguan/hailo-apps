@@ -80,7 +80,7 @@ def app_callback(element, buffer, user_data):
         # Downscale for motion detection analysis
         small_frame = cv2.resize(frame, (analysis_width, analysis_height))
         gray = cv2.cvtColor(small_frame, cv2.COLOR_RGB2GRAY)
-        gray = cv2.GaussianBlur(gray, (21, 21), 0)
+        gray = cv2.GaussianBlur(gray, (11, 11), 0)
 
         # Scale the min area threshold based on the resolution reduction
         scale_factor = (analysis_width * analysis_height) / (width * height)
@@ -89,8 +89,8 @@ def app_callback(element, buffer, user_data):
         if user_data.avg_frame is None:
             user_data.avg_frame = gray.copy().astype("float")
         else:
-            # Accumulate background average
-            cv2.accumulateWeighted(gray, user_data.avg_frame, 0.5)
+            # Accumulate background average slowly (0.02 weight) so slow-moving objects are detected
+            cv2.accumulateWeighted(gray, user_data.avg_frame, 0.02)
             # Compute absolute difference
             frame_delta = cv2.absdiff(gray, cv2.convertScaleAbs(user_data.avg_frame))
             # Threshold the difference image
@@ -124,6 +124,8 @@ def app_callback(element, buffer, user_data):
                 if not user_data.recording:
                     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                     filename = f"/home/pi/Videos/motion_{timestamp}.mp4"
+                    # Ensure directory exists before recording
+                    os.makedirs(os.path.dirname(filename), exist_ok=True)
                     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                     fps = 30.0
                     user_data.writer = cv2.VideoWriter(filename, fourcc, fps, (width, height))
