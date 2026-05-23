@@ -106,7 +106,7 @@ class GStreamerDetectionApp(GStreamerApp):
             arch=self.arch
         )
 
-            # Set the post-processing shared object file
+        # Set the post-processing shared object file
         self.post_process_so = get_resource_path(
             DETECTION_PIPELINE, RESOURCES_SO_DIR_NAME, self.arch, DETECTION_POSTPROCESS_SO_FILENAME
         )
@@ -150,20 +150,6 @@ class GStreamerDetectionApp(GStreamerApp):
 
         self.create_pipeline()
         hailo_logger.debug("Pipeline created")
-
-    def get_pipeline_string(self):
-        source_pipeline = self.get_source_pipeline()
-        detection_pipeline = INFERENCE_PIPELINE(
-            hef_path=self.hef_path,
-            post_process_so=self.post_process_so,
-            post_function_name=self.post_function_name,
-            batch_size=self.batch_size,
-            config_json=self.labels_json,
-            additional_params=self.thresholds_str,
-        )
-        detection_pipeline_wrapper = INFERENCE_PIPELINE_WRAPPER(detection_pipeline)
-        tracker_pipeline = TRACKER_PIPELINE(class_id=-1)  # Track all classes
-        user_callback_pipeline = USER_CALLBACK_PIPELINE()
 
     def get_pipeline_string(self):
         source_pipeline = self.get_source_pipeline()

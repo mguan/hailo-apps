@@ -33,16 +33,11 @@ hailo_logger = get_logger(__name__)
 class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
-        self.new_variable = 42
         self.writer = None
         self.recording = False
         self.cooldown_counter = 0
         self.cooldown_limit = 30  # 30 frames (about 1 second at 30fps)
         self.record_clips = False
-
-    def new_function(self):
-        return "The meaning of life is: "
-
 
 # -----------------------------------------------------------------------------------------------
 # User-defined callback function
@@ -93,7 +88,7 @@ def app_callback(element, buffer, user_data):
         )
 
     # Dynamic clip recording logic
-    if (record_clips or user_data.use_frame) and frame is not None:
+    if frame is not None:
         # Convert RGB → BGR for OpenCV processing and saving
         frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
