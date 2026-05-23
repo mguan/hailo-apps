@@ -11,7 +11,6 @@ gi.require_version("Gst", "1.0")
 import cv2
 
 # Local application-specific imports
-import hailo
 from gi.repository import Gst
 
 from hailo_apps.python.pipeline_apps.detection.detection_pipeline import GStreamerDetectionApp
@@ -36,9 +35,9 @@ class user_app_callback_class(app_callback_class):
         self.writer = None
         self.recording = False
         self.cooldown_counter = 0
-        self.cooldown_limit = 30  # 30 frames (about 1 second at 30fps)
+        self.cooldown_limit = 150  # 150 frames (about 5 seconds at 30fps)
         self.record_clips = False
-        self.motion_detect = False
+        self.motion_detect = True
         self.motion_min_area = 500
         self.motion_threshold = 25
         self.avg_frame = None
@@ -55,7 +54,6 @@ def app_callback(element, buffer, user_data):
 
     # Note: Frame counting is handled automatically by the framework wrapper
     frame_idx = user_data.get_count()
-    string_to_print = f"Frame count: {frame_idx}\n"
 
     pad = element.get_static_pad("src")
     format_cap, width, height = get_caps_from_pad(pad)
@@ -67,105 +65,55 @@ def app_callback(element, buffer, user_data):
     if (record_clips or user_data.use_frame) and format_cap is not None and width is not None and height is not None:
         frame = get_numpy_from_buffer(buffer, format_cap, width, height)
 
-    roi = hailo.get_roi_from_buffer(buffer)
-    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
+    motion_detected = False
+    motion_boxes = []
 
-    # Filter detections to target mouse, rat, and person
-    target_labels = {"person", "mouse", "rat"}
-    small_animals = []
-    for detection in detections:
-        label = detection.get_label()
-        if label in target_labels:
-            small_animals.append(detection)
-        else:
-            roi.remove_object(detection)
-
-    detection_count = len(small_animals)
-    for detection in small_animals:
-        # Get track ID
-        track_id = 0
-        track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
-        if len(track) == 1:
-            track_id = track[0].get_id()
-        string_to_print += (
-            f"Detection: ID: {track_id} Label: {detection.get_label()} Confidence: {detection.get_confidence():.2f}\n"
-        )
-
-    # Dynamic clip recording logic
+    # Process frame with OpenCV if available
     if frame is not None:
         # Convert RGB → BGR for OpenCV processing and saving
         frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-        # Draw bounding boxes and track IDs directly on the video clip frames
-        for detection in small_animals:
-            bbox = detection.get_bbox()
-            ymin = int(bbox.ymin() * height)
-            xmin = int(bbox.xmin() * width)
-            ymax = int(bbox.ymax() * height)
-            xmax = int(bbox.xmax() * width)
-            
-            # Clip bounds to frame dimensions
-            ymin, ymax = max(0, ymin), min(height, ymax)
-            xmin, xmax = max(0, xmin), min(width, xmax)
-
-            track_id = 0
-            track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
-            if len(track) == 1:
-                track_id = track[0].get_id()
-
-            label_text = f"{detection.get_label()} ID:{track_id} ({detection.get_confidence():.2f})"
-            cv2.rectangle(frame_bgr, (xmin, ymin), (xmax, ymax), (0, 255, 0), 2)
-            cv2.putText(frame_bgr, label_text, (xmin, ymin - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
         # Motion detection logic
-        motion_detected = False
-        motion_boxes = []
-        if record_clips and user_data.motion_detect:
-            # 1. Convert to gray and blur
-            gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-            gray = cv2.GaussianBlur(gray, (21, 21), 0)
+        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        gray = cv2.GaussianBlur(gray, (21, 21), 0)
 
-            if user_data.avg_frame is None:
-                user_data.avg_frame = gray.copy().astype("float")
-            else:
-                # Accumulate background average
-                cv2.accumulateWeighted(gray, user_data.avg_frame, 0.5)
-                # Compute absolute difference
-                frame_delta = cv2.absdiff(gray, cv2.convertScaleAbs(user_data.avg_frame))
-                # Threshold the difference image
-                thresh = cv2.threshold(frame_delta, user_data.motion_threshold, 255, cv2.THRESH_BINARY)[1]
-                # Dilate
-                thresh = cv2.dilate(thresh, None, iterations=2)
-                # Find contours
-                contours, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if user_data.avg_frame is None:
+            user_data.avg_frame = gray.copy().astype("float")
+        else:
+            # Accumulate background average
+            cv2.accumulateWeighted(gray, user_data.avg_frame, 0.5)
+            # Compute absolute difference
+            frame_delta = cv2.absdiff(gray, cv2.convertScaleAbs(user_data.avg_frame))
+            # Threshold the difference image
+            thresh = cv2.threshold(frame_delta, user_data.motion_threshold, 255, cv2.THRESH_BINARY)[1]
+            # Dilate
+            thresh = cv2.dilate(thresh, None, iterations=2)
+            # Find contours
+            contours, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-                for contour in contours:
-                    if cv2.contourArea(contour) >= user_data.motion_min_area:
-                        motion_detected = True
-                        (x, y, w, h) = cv2.boundingRect(contour)
-                        motion_boxes.append((x, y, x + w, y + h))
+            for contour in contours:
+                if cv2.contourArea(contour) >= user_data.motion_min_area:
+                    motion_detected = True
+                    (x, y, w, h) = cv2.boundingRect(contour)
+                    motion_boxes.append((x, y, x + w, y + h))
 
-        # Draw motion bounding boxes on BGR frame for recording
+        # Draw motion bounding boxes on BGR frame
         for (xmin, ymin, xmax, ymax) in motion_boxes:
             cv2.rectangle(frame_bgr, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
             cv2.putText(frame_bgr, "Motion", (xmin, ymin - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
         if record_clips:
-            object_present = (len(small_animals) > 0) or motion_detected
-            if object_present:
+            if motion_detected:
                 user_data.cooldown_counter = user_data.cooldown_limit
                 
                 if not user_data.recording:
                     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                    if len(small_animals) > 0:
-                        filename = f"/tmp/{small_animals[0].get_label()}_{timestamp}.mp4"
-                    else:
-                        filename = f"/tmp/motion_{timestamp}.mp4"
+                    filename = f"/tmp/motion_{timestamp}.mp4"
                     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                     fps = 30.0
                     user_data.writer = cv2.VideoWriter(filename, fourcc, fps, (width, height))
                     user_data.recording = True
-                    print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Target/motion entered. Started clip recording: {filename}")
+                    print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Motion entered. Started clip recording: {filename}")
                     
                 if user_data.writer is not None:
                     user_data.writer.write(frame_bgr)
@@ -180,42 +128,33 @@ def app_callback(element, buffer, user_data):
                             user_data.writer.release()
                             user_data.writer = None
                         user_data.recording = False
-                        print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Target/motion left. Dynamic clip recording stopped.")
+                        print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Motion left. Dynamic clip recording stopped.")
 
-        # Overlay text on visual screen
-        cv2.putText(
-            frame,
-            f"Detections: {detection_count}",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 255, 0),
-            2,
-        )
-        if record_clips and user_data.recording:
+        if user_data.use_frame:
+            # Draw HUD overlays on display frame
             cv2.putText(
-                frame,
-                "RECORDING",
-                (10, 70),
+                frame_bgr,
+                f"Motion Zones: {len(motion_boxes)}",
+                (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1,
-                (0, 0, 255),
+                (0, 255, 0),
                 2,
             )
-        if user_data.use_frame:
-            # Convert RGB → BGR for display window
-            frame_display = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            # Draw motion boxes on display frame if motion_detect is enabled
-            if user_data.motion_detect:
-                for (xmin, ymin, xmax, ymax) in motion_boxes:
-                    cv2.rectangle(frame_display, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
-                    cv2.putText(frame_display, "Motion", (xmin, ymin - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-            user_data.set_frame(frame_display)
+            if user_data.recording:
+                cv2.putText(
+                    frame_bgr,
+                    "RECORDING",
+                    (10, 70),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 0, 255),
+                    2,
+                )
+            user_data.set_frame(frame_bgr)
 
-    if detection_count > 0 or motion_detected:
-        if motion_detected:
-            string_to_print += f"Motion detected: {len(motion_boxes)} zones\n"
-        print(string_to_print)
+    if motion_detected:
+        print(f"Frame count: {frame_idx}\nMotion detected: {len(motion_boxes)} zones\n")
     return
 
 
