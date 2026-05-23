@@ -38,7 +38,7 @@ class user_app_callback_class(app_callback_class):
         self.cooldown_limit = 150  # 150 frames (about 5 seconds at 30fps)
         self.record_clips = False
         self.motion_detect = True
-        self.motion_min_area = 500
+        self.motion_min_area = 50
         self.motion_threshold = 25
         self.avg_frame = None
 
@@ -73,9 +73,18 @@ def app_callback(element, buffer, user_data):
         # Convert RGB → BGR for OpenCV processing and saving
         frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-        # Motion detection logic
-        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        # Determine analysis resolution (fixed to 640px width for smooth 30 FPS processing)
+        analysis_width = 640
+        analysis_height = int(analysis_width * height / width)
+
+        # Downscale for motion detection analysis
+        small_frame = cv2.resize(frame, (analysis_width, analysis_height))
+        gray = cv2.cvtColor(small_frame, cv2.COLOR_RGB2GRAY)
         gray = cv2.GaussianBlur(gray, (21, 21), 0)
+
+        # Scale the min area threshold based on the resolution reduction
+        scale_factor = (analysis_width * analysis_height) / (width * height)
+        scaled_min_area = user_data.motion_min_area * scale_factor
 
         if user_data.avg_frame is None:
             user_data.avg_frame = gray.copy().astype("float")
@@ -92,10 +101,16 @@ def app_callback(element, buffer, user_data):
             contours, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
             for contour in contours:
-                if cv2.contourArea(contour) >= user_data.motion_min_area:
+                if cv2.contourArea(contour) >= scaled_min_area:
                     motion_detected = True
                     (x, y, w, h) = cv2.boundingRect(contour)
-                    motion_boxes.append((x, y, x + w, y + h))
+                    
+                    # Map coordinates back to the original full resolution
+                    orig_xmin = int(x * width / analysis_width)
+                    orig_ymin = int(y * height / analysis_height)
+                    orig_xmax = int((x + w) * width / analysis_width)
+                    orig_ymax = int((y + h) * height / analysis_height)
+                    motion_boxes.append((orig_xmin, orig_ymin, orig_xmax, orig_ymax))
 
         # Draw motion bounding boxes on BGR frame
         for (xmin, ymin, xmax, ymax) in motion_boxes:
@@ -108,7 +123,7 @@ def app_callback(element, buffer, user_data):
                 
                 if not user_data.recording:
                     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"/tmp/motion_{timestamp}.mp4"
+                    filename = f"/home/pi/Videos/motion_{timestamp}.mp4"
                     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                     fps = 30.0
                     user_data.writer = cv2.VideoWriter(filename, fourcc, fps, (width, height))

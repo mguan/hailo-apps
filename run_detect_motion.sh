@@ -8,4 +8,4 @@ source ./setup_env.sh
 cd "$HOME/hailo-apps/hailo_apps/python/pipeline_apps/detection/"
 
 # Execute the application (using exec to replace the shell process for clean exit handling)
-exec python detection.py --horizontal-mirror --vertical-mirror --input rpi --height=480 --width=640 --record-clips --motion-detect "$@"
+exec python detection.py --horizontal-mirror --vertical-mirror --input rpi --height=720 --width=1080 --record-clips --motion-detect "$@"

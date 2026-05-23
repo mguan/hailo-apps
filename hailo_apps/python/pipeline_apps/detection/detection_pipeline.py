@@ -54,8 +54,8 @@ class GStreamerDetectionApp(GStreamerApp):
         parser.add_argument(
             "--motion-min-area",
             type=int,
-            default=500,
-            help="Minimum contour area to consider as motion (default: 500)",
+            default=50,
+            help="Minimum contour area to consider as motion (default: 50)",
         )
         parser.add_argument(
             "--motion-threshold",
@@ -75,7 +75,7 @@ class GStreamerDetectionApp(GStreamerApp):
         # Pass options to user_data
         self.user_data.record_clips = getattr(self.options_menu, "record_clips", False)
         self.user_data.motion_detect = getattr(self.options_menu, "motion_detect", True)
-        self.user_data.motion_min_area = getattr(self.options_menu, "motion_min_area", 500)
+        self.user_data.motion_min_area = getattr(self.options_menu, "motion_min_area", 50)
         self.user_data.motion_threshold = getattr(self.options_menu, "motion_threshold", 25)
 
         hailo_logger.debug(
