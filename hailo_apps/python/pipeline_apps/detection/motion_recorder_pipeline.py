@@ -27,7 +27,7 @@ MOTION_RECORDER_APP_TITLE = "motion_recorder"
 # -----------------------------------------------------------------------------------------------
 # User Gstreamer Application
 # -----------------------------------------------------------------------------------------------
-class GStreamerDetectionApp(GStreamerApp):
+class GStreamerMotionRecorderApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         if parser is None:
             parser = get_pipeline_parser()
@@ -123,7 +123,7 @@ class GStreamerDetectionApp(GStreamerApp):
 def main():
     hailo_logger.info("Starting Hailo Detection App...")
     user_data = app_callback_class()
-    app = GStreamerDetectionApp(dummy_callback, user_data)
+    app = GStreamerMotionRecorderApp(dummy_callback, user_data)
     app.run()
 
 

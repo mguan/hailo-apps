@@ -12,7 +12,7 @@ gi.require_version("Gst", "1.0")
 import cv2
 
 # Local application-specific imports
-from hailo_apps.python.pipeline_apps.detection.detection_pipeline import GStreamerDetectionApp
+from hailo_apps.python.pipeline_apps.detection.motion_recorder_pipeline import GStreamerMotionRecorderApp
 from hailo_apps.python.core.common.buffer_utils import (
     get_caps_from_pad,
     get_numpy_from_buffer,
@@ -209,7 +209,7 @@ def app_callback(element, buffer, user_data):
 def main():
     hailo_logger.info("Starting Detection App.")
     user_data = user_app_callback_class()
-    app = GStreamerDetectionApp(app_callback, user_data)
+    app = GStreamerMotionRecorderApp(app_callback, user_data)
     app.run()
 
 
