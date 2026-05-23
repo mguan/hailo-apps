@@ -35,11 +35,11 @@ class user_app_callback_class(app_callback_class):
         self.writer = None
         self.recording = False
         self.cooldown_counter = 0
-        self.cooldown_limit = 150  # 150 frames (about 5 seconds at 30fps)
+        self.cooldown_limit = 90  # 90 frames (about 3 seconds at 30fps)
         self.record_clips = False
         self.motion_detect = True
         self.motion_min_area = 50
-        self.motion_threshold = 25
+        self.motion_threshold = 15
         self.avg_frame = None
         self.output_dir = "/home/pi/Videos"
 
@@ -81,7 +81,7 @@ def app_callback(element, buffer, user_data):
         # Downscale for motion detection analysis
         small_frame = cv2.resize(frame, (analysis_width, analysis_height))
         gray = cv2.cvtColor(small_frame, cv2.COLOR_RGB2GRAY)
-        gray = cv2.GaussianBlur(gray, (11, 11), 0)
+        gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
         # Scale the min area threshold based on the resolution reduction
         scale_factor = (analysis_width * analysis_height) / (width * height)

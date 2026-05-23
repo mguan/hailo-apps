@@ -60,8 +60,8 @@ class GStreamerDetectionApp(GStreamerApp):
         parser.add_argument(
             "--motion-threshold",
             type=int,
-            default=25,
-            help="Threshold value for frame differencing (default: 25)",
+            default=15,
+            help="Threshold value for frame differencing (default: 15)",
         )
         parser.add_argument(
             "--output-dir",
@@ -82,7 +82,7 @@ class GStreamerDetectionApp(GStreamerApp):
         self.user_data.record_clips = getattr(self.options_menu, "record_clips", False)
         self.user_data.motion_detect = getattr(self.options_menu, "motion_detect", True)
         self.user_data.motion_min_area = getattr(self.options_menu, "motion_min_area", 50)
-        self.user_data.motion_threshold = getattr(self.options_menu, "motion_threshold", 25)
+        self.user_data.motion_threshold = getattr(self.options_menu, "motion_threshold", 15)
         self.user_data.output_dir = getattr(self.options_menu, "output_dir", "/home/pi/Videos")
 
         hailo_logger.debug(
