@@ -41,6 +41,7 @@ class user_app_callback_class(app_callback_class):
         self.motion_min_area = 50
         self.motion_threshold = 25
         self.avg_frame = None
+        self.output_dir = "/home/pi/Videos"
 
 # -----------------------------------------------------------------------------------------------
 # User-defined callback function
@@ -123,7 +124,8 @@ def app_callback(element, buffer, user_data):
                 
                 if not user_data.recording:
                     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"/home/pi/Videos/motion_{timestamp}.mp4"
+                    output_dir = getattr(user_data, "output_dir", "/home/pi/Videos")
+                    filename = os.path.join(output_dir, f"motion_{timestamp}.mp4")
                     # Ensure directory exists before recording
                     os.makedirs(os.path.dirname(filename), exist_ok=True)
                     fourcc = cv2.VideoWriter_fourcc(*'mp4v')

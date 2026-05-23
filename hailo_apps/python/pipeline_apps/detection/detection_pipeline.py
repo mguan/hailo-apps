@@ -63,6 +63,12 @@ class GStreamerDetectionApp(GStreamerApp):
             default=25,
             help="Threshold value for frame differencing (default: 25)",
         )
+        parser.add_argument(
+            "--output-dir",
+            type=str,
+            default="/home/pi/Videos",
+            help="Root directory where dynamic video clips are saved (default: /home/pi/Videos)",
+        )
         
         hailo_logger.info("Initializing GStreamer Detection App...")
 
@@ -77,6 +83,7 @@ class GStreamerDetectionApp(GStreamerApp):
         self.user_data.motion_detect = getattr(self.options_menu, "motion_detect", True)
         self.user_data.motion_min_area = getattr(self.options_menu, "motion_min_area", 50)
         self.user_data.motion_threshold = getattr(self.options_menu, "motion_threshold", 25)
+        self.user_data.output_dir = getattr(self.options_menu, "output_dir", "/home/pi/Videos")
 
         hailo_logger.debug(
             "Parent GStreamerApp initialized | arch=%s | input=%s | fps=%s | sync=%s | show_fps=%s",
