@@ -31,6 +31,9 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     INFERENCE_PIPELINE_WRAPPER,
     TRACKER_PIPELINE,
     USER_CALLBACK_PIPELINE,
+    OVERLAY_PIPELINE,
+    FILE_SINK_PIPELINE,
+    QUEUE,
 )
 
 hailo_logger = get_logger(__name__)
@@ -52,6 +55,16 @@ class GStreamerDetectionApp(GStreamerApp):
             default=None,
             help="Path to costume labels JSON file",
         )
+        parser.add_argument(
+            "--no-display",
+            action="store_true",
+            help="Disable the visual display (run headless, e.g. for SSH or remote recording)",
+        )
+        parser.add_argument(
+            "--record-clips",
+            action="store_true",
+            help="Dynamically record video clips with timestamps when objects enter/leave the frame",
+        )
         
         # Handle --list-models flag before full initialization
         handle_list_models_flag(parser, DETECTION_PIPELINE)
@@ -59,6 +72,13 @@ class GStreamerDetectionApp(GStreamerApp):
         hailo_logger.info("Initializing GStreamer Detection App...")
 
         super().__init__(parser, user_data)
+
+        # Override video sink if headless
+        if self.options_menu.no_display:
+            self.video_sink = "fakesink"
+
+        # Pass record_clips flag to user_data
+        self.user_data.record_clips = getattr(self.options_menu, "record_clips", False)
 
         hailo_logger.debug(
             "Parent GStreamerApp initialized | arch=%s | input=%s | fps=%s | sync=%s | show_fps=%s",
@@ -142,7 +162,21 @@ class GStreamerDetectionApp(GStreamerApp):
             additional_params=self.thresholds_str,
         )
         detection_pipeline_wrapper = INFERENCE_PIPELINE_WRAPPER(detection_pipeline)
-        tracker_pipeline = TRACKER_PIPELINE(class_id=1)
+        tracker_pipeline = TRACKER_PIPELINE(class_id=-1)  # Track all classes
+        user_callback_pipeline = USER_CALLBACK_PIPELINE()
+
+    def get_pipeline_string(self):
+        source_pipeline = self.get_source_pipeline()
+        detection_pipeline = INFERENCE_PIPELINE(
+            hef_path=self.hef_path,
+            post_process_so=self.post_process_so,
+            post_function_name=self.post_function_name,
+            batch_size=self.batch_size,
+            config_json=self.labels_json,
+            additional_params=self.thresholds_str,
+        )
+        detection_pipeline_wrapper = INFERENCE_PIPELINE_WRAPPER(detection_pipeline)
+        tracker_pipeline = TRACKER_PIPELINE(class_id=-1)  # Track all classes
         user_callback_pipeline = USER_CALLBACK_PIPELINE()
         display_pipeline = DISPLAY_PIPELINE(
             video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps

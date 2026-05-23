@@ -4,8 +4,8 @@
 cd "$HOME/hailo-apps/"
 source ./setup_env.sh
 
-# Navigate to the detection_simple application folder
-cd "$HOME/hailo-apps/hailo_apps/python/pipeline_apps/detection_simple/"
+# Navigate to the detection application folder
+cd "$HOME/hailo-apps/hailo_apps/python/pipeline_apps/detection/"
 
 # Execute the application (using exec to replace the shell process for clean exit handling)
-exec python detection_simple.py --horizontal-mirror --vertical-mirror --input rpi --height=864 --width=1536 --output-file=record.mkv
+exec python detection.py --horizontal-mirror --vertical-mirror --input rpi --height=480 --width=640 --record-clips
