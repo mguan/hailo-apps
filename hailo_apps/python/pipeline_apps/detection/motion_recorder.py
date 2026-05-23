@@ -119,7 +119,7 @@ class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
         # Config — populated by the pipeline from CLI options
-        self.record_clips = False
+        self.record_clips = True
         self.motion_min_area = 50
         self.motion_threshold = 15
         self.output_dir = "/home/pi/Videos"

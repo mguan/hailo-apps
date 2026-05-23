@@ -74,9 +74,10 @@ class GStreamerMotionRecorderApp(GStreamerApp):
             help="Disable the visual display (run headless, e.g. for SSH or remote recording)",
         )
         parser.add_argument(
-            "--record-clips",
-            action="store_true",
-            help="Dynamically record video clips with timestamps when motion is detected",
+            "--no-record-clips",
+            dest="record_clips",
+            action="store_false",
+            help="Disable recording of motion clips (recording is on by default)",
         )
         parser.add_argument(
             "--motion-min-area",
