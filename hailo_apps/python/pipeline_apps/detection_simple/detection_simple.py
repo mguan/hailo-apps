@@ -34,17 +34,31 @@ def app_callback(element, buffer, user_data):
     # Note: Frame counting is handled automatically by the framework wrapper
     frame_idx = user_data.get_count()
     hailo_logger.debug("Processing frame %s", frame_idx)
-    string_to_print = f"Frame count: {user_data.get_count()}\n"
     if buffer is None:
         hailo_logger.warning("Received None buffer at frame=%s", user_data.get_count())
         return
-    for detection in hailo.get_roi_from_buffer(buffer).get_objects_typed(
-        hailo.HAILO_DETECTION
-    ):
-        string_to_print += (
-            f"Detection: {detection.get_label()} Confidence: {detection.get_confidence():.2f}\n"
-        )
-    print(string_to_print)
+        
+    roi = hailo.get_roi_from_buffer(buffer)
+    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
+    
+    # Filter detections to only keep mouse and rat (small animals)
+    target_labels = {"person", "rat"}
+    small_animals = []
+    
+    for detection in detections:
+        label = detection.get_label()
+        if label in target_labels:
+            small_animals.append(detection)
+        else:
+            roi.remove_object(detection)
+            
+    if small_animals:
+        string_to_print = f"Frame count: {frame_idx}\n"
+        for detection in small_animals:
+            string_to_print += (
+                f"Detection: {detection.get_label()} Confidence: {detection.get_confidence():.2f}\n"
+            )
+        print(string_to_print)
     return
 
 

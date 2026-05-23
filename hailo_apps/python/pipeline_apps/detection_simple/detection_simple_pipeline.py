@@ -23,6 +23,9 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     DISPLAY_PIPELINE,
     INFERENCE_PIPELINE,
     USER_CALLBACK_PIPELINE,
+    OVERLAY_PIPELINE,
+    FILE_SINK_PIPELINE,
+    QUEUE,
 )
 
 hailo_logger = get_logger(__name__)
@@ -44,6 +47,16 @@ class GStreamerDetectionSimpleApp(GStreamerApp):
             default=None,
             help="Path to costume labels JSON file",
         )
+        parser.add_argument(
+            "--output-file",
+            default=None,
+            help="Path to save the recorded video file (e.g. output.mkv)",
+        )
+        parser.add_argument(
+            "--no-display",
+            action="store_true",
+            help="Disable the visual display (run headless, e.g. for SSH or remote recording)",
+        )
 
         # Handle --list-models flag before full initialization
         handle_list_models_flag(parser, SIMPLE_DETECTION_PIPELINE)
@@ -55,6 +68,10 @@ class GStreamerDetectionSimpleApp(GStreamerApp):
             self.video_width = 640
         if self.video_height == 720:
             self.video_height = 640
+
+        # Override video sink if headless
+        if self.options_menu.no_display:
+            self.video_sink = "fakesink"
 
         # Set Hailo parameters - these parameters should be set based on the model used
         # Override batch_size if not set via parser
@@ -124,16 +141,46 @@ class GStreamerDetectionSimpleApp(GStreamerApp):
             additional_params=self.thresholds_str,
         )
         user_callback_pipeline = USER_CALLBACK_PIPELINE()
-        display_pipeline = DISPLAY_PIPELINE(
-            video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps
-        )
 
-        pipeline_string = (
-            f"{source_pipeline} ! "
-            f"{detection_pipeline} ! "
-            f"{user_callback_pipeline} ! "
-            f"{display_pipeline}"
-        )
+        output_file = getattr(self.options_menu, "output_file", None)
+        no_display = getattr(self.options_menu, "no_display", False)
+
+        if output_file:
+            # Create the recording pipeline branch
+            overlay_pipeline = OVERLAY_PIPELINE(name="hailo_overlay")
+            file_sink_pipeline = FILE_SINK_PIPELINE(output_file=output_file, name="file_sink")
+
+            if no_display:
+                pipeline_string = (
+                    f"{source_pipeline} ! "
+                    f"{detection_pipeline} ! "
+                    f"{user_callback_pipeline} ! "
+                    f"{overlay_pipeline} ! "
+                    f"{file_sink_pipeline}"
+                )
+            else:
+                display_sink = f"fpsdisplaysink name=hailo_display video-sink={self.video_sink} sync={self.sync} text-overlay={self.show_fps} signal-fps-measurements=true"
+                pipeline_string = (
+                    f"{source_pipeline} ! "
+                    f"{detection_pipeline} ! "
+                    f"{user_callback_pipeline} ! "
+                    f"{overlay_pipeline} ! "
+                    f"videoconvert name=tee_videoconvert ! "
+                    f"tee name=t "
+                    f"t. ! {QUEUE(name='display_q')} ! {display_sink} "
+                    f"t. ! {file_sink_pipeline}"
+                )
+        else:
+            display_pipeline = DISPLAY_PIPELINE(
+                video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps
+            )
+            pipeline_string = (
+                f"{source_pipeline} ! "
+                f"{detection_pipeline} ! "
+                f"{user_callback_pipeline} ! "
+                f"{display_pipeline}"
+            )
+
         hailo_logger.info(f"Pipeline string: {pipeline_string}")
         return pipeline_string
 

@@ -394,6 +394,42 @@ def DISPLAY_PIPELINE(
     return display_pipeline
 
 
+def get_h264_encoder_pipeline(bitrate=5000):
+    """
+    Dynamically finds the best available H.264 encoder on the system and returns its GStreamer pipeline segment.
+    """
+    import gi
+    gi.require_version('Gst', '1.0')
+    from gi.repository import Gst
+    
+    # Initialize Gst if not already initialized
+    if not Gst.is_initialized():
+        Gst.init(None)
+        
+    registry = Gst.Registry.get()
+    
+    # Check encoders in order of preference
+    # 1. v4l2h264enc (Hardware accelerated on Raspberry Pi/Linux devices)
+    if registry.find_feature("v4l2h264enc", Gst.ElementFactory):
+        return f"v4l2h264enc extra-controls=\"controls,h264_profile=4,video_bitrate={bitrate*1000}\""
+        
+    # 2. x264enc (High-quality CPU-based H.264 encoder)
+    if registry.find_feature("x264enc", Gst.ElementFactory):
+        return f"x264enc tune=zerolatency bitrate={bitrate}"
+        
+    # 3. openh264enc (Cisco's H.264 encoder, common on RPi Debian systems)
+    if registry.find_feature("openh264enc", Gst.ElementFactory):
+        # openh264enc expects bitrate in bits/sec, not kilobits/sec
+        return f"openh264enc bitrate={bitrate*1000} complexity=medium usage-type=camera"
+        
+    # 4. avenc_h264 (FFmpeg-based CPU H.264 encoder)
+    if registry.find_feature("avenc_h264", Gst.ElementFactory):
+        return f"avenc_h264 bitrate={bitrate*1000}"
+        
+    # Fallback to standard x264enc
+    return f"x264enc tune=zerolatency bitrate={bitrate}"
+
+
 def FILE_SINK_PIPELINE(output_file="output.mkv", name="file_sink", bitrate=5000):
     """Creates a GStreamer pipeline string for saving the video to a file in .mkv format.
     It it recommended run ffmpeg to fix the file header after recording.
@@ -409,15 +445,17 @@ def FILE_SINK_PIPELINE(output_file="output.mkv", name="file_sink", bitrate=5000)
         str: A string representing the GStreamer pipeline for saving the video to a file.
     """
     # Construct the file sink pipeline string
+    encoder_str = get_h264_encoder_pipeline(bitrate)
     file_sink_pipeline = (
         f"{QUEUE(name=f'{name}_videoconvert_q')} ! "
         f"videoconvert name={name}_videoconvert n-threads=2 qos=false ! "
+        f"video/x-raw, format=I420 ! "
         f"{QUEUE(name=f'{name}_encoder_q')} ! "
-        f"x264enc tune=zerolatency bitrate={bitrate} ! "
+        f"{encoder_str} ! "
+        f"h264parse ! "
         f"matroskamux ! "
         f"filesink location={output_file} "
     )
-
     return file_sink_pipeline
 
 
