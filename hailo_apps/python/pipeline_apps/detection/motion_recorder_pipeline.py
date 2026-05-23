@@ -40,7 +40,6 @@ class GStreamerMotionRecorderApp(GStreamerApp):
             self.video_sink = "fakesink"
 
         opts = self.options_menu
-        self.user_data.motion_detect = opts.motion_detect
         self.user_data.record_clips = opts.record_clips
         self.user_data.motion_min_area = opts.motion_min_area
         self.user_data.motion_threshold = opts.motion_threshold
@@ -78,12 +77,6 @@ class GStreamerMotionRecorderApp(GStreamerApp):
             "--record-clips",
             action="store_true",
             help="Dynamically record video clips with timestamps when motion is detected",
-        )
-        parser.add_argument(
-            "--no-motion-detect",
-            action="store_false",
-            dest="motion_detect",
-            help="Disable OpenCV motion-based recording (motion detection is on by default)",
         )
         parser.add_argument(
             "--motion-min-area",

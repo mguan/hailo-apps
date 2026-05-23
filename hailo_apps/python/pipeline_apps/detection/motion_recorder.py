@@ -119,7 +119,6 @@ class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
         # Config — populated by the pipeline from CLI options
-        self.motion_detect = True
         self.record_clips = False
         self.motion_min_area = 50
         self.motion_threshold = 15
@@ -172,7 +171,7 @@ def app_callback(element, buffer, user_data):
         return
 
     # Skip entirely if nothing downstream will consume a frame
-    if not user_data.motion_detect or not (user_data.record_clips or user_data.use_frame):
+    if not (user_data.record_clips or user_data.use_frame):
         return
 
     pad = element.get_static_pad("src")
