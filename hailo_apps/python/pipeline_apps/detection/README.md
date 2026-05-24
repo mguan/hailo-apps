@@ -41,8 +41,16 @@ Clips are organized by date under `--output-dir`:
 
 Example: `/media/pi/Backup/Events/2026/05/23/motion_20260523_142105.mp4`
 
-The saved clip contains the **clean camera frame** — motion-box overlays and the
-on-screen HUD are drawn only on the live display, not burned into the recording.
+The saved clip has motion-zone red boxes drawn on each frame so you can see at a
+glance where the motion was. The on-screen HUD (zone count + `RECORDING` indicator)
+is drawn only when `--use-frame` is set and appears only in the live preview
+window, never in the saved file.
+
+> Note on the live view: the main GStreamer window (the one that opens by default)
+> shows the **raw camera buffer** — overlays drawn from Python in `app_callback`
+> cannot affect it, because the buffer is mapped read-only and the numpy array is a
+> copy. Pass `--use-frame` to open a second OpenCV window that does render the
+> motion boxes + HUD; or just watch the saved clips, which contain the boxes.
 
 ## CLI arguments
 

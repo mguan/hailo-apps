@@ -223,17 +223,18 @@ def app_callback(element, buffer, user_data):
     motion_boxes = user_data.motion_detector.detect(frame, width, height)
     motion_detected = bool(motion_boxes)
 
-    # Record the clean frame *before* drawing any overlays so the saved
-    # clip is overlay-free (useful for evidentiary review).
+    # Motion boxes are drawn before recording so they end up burned into the
+    # saved clip. HUD (zone count + RECORDING indicator) is display-only and
+    # is drawn after recording.
+    _draw_motion_overlay(frame_bgr, motion_boxes)
+
     if user_data.record_clips:
         user_data.recorder.feed(frame_bgr, motion_detected, width, height)
 
     if user_data.use_frame:
-        display_frame = frame_bgr.copy()
-        _draw_motion_overlay(display_frame, motion_boxes)
         recording = user_data.recorder.recording if user_data.recorder else False
-        _draw_hud(display_frame, len(motion_boxes), recording)
-        user_data.set_frame(display_frame)
+        _draw_hud(frame_bgr, len(motion_boxes), recording)
+        user_data.set_frame(frame_bgr)
 
     if motion_detected:
         hailo_logger.info(
