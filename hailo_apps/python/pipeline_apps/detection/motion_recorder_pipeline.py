@@ -33,7 +33,7 @@ class GStreamerMotionRecorderApp(GStreamerApp):
             parser = get_pipeline_parser()
         self._add_arguments(parser)
 
-        hailo_logger.info("Initializing GStreamer Detection App...")
+        hailo_logger.info("Initializing GStreamer Motion Recorder App...")
         super().__init__(parser, user_data)
 
         if self.options_menu.no_display:
@@ -115,7 +115,7 @@ class GStreamerMotionRecorderApp(GStreamerApp):
 
 
 def main():
-    hailo_logger.info("Starting Hailo Detection App...")
+    hailo_logger.info("Starting Hailo Motion Recorder App...")
     user_data = app_callback_class()
     app = GStreamerMotionRecorderApp(dummy_callback, user_data)
     app.run()

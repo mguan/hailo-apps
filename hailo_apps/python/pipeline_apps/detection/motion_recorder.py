@@ -10,6 +10,7 @@ import gi
 
 gi.require_version("Gst", "1.0")
 import cv2
+import numpy as np
 
 # Local application-specific imports
 from hailo_apps.python.pipeline_apps.detection.motion_recorder_pipeline import GStreamerMotionRecorderApp
@@ -45,7 +46,7 @@ class MotionDetector:
         gray = cv2.GaussianBlur(gray, self.BLUR_KERNEL, 0)
 
         if self._avg_frame is None:
-            self._avg_frame = gray.copy().astype("float")
+            self._avg_frame = gray.astype(np.float32)
             return []
 
         cv2.accumulateWeighted(gray, self._avg_frame, self.BG_LEARNING_RATE)
@@ -80,6 +81,8 @@ class ClipRecorder:
         self._cooldown_limit = max(1, int(round(self.COOLDOWN_SECONDS * fps)))
         self._writer = None
         self._cooldown = 0
+        self._current_path = None
+        self._frames_written = 0
 
     @property
     def recording(self) -> bool:
@@ -98,6 +101,12 @@ class ClipRecorder:
                 return
         if self.recording:
             self._writer.write(frame_bgr)
+            self._frames_written += 1
+
+    def close(self):
+        """Flush any in-progress recording. Safe to call multiple times."""
+        if self.recording:
+            self._stop()
 
     def _start(self, width: int, height: int):
         now = datetime.datetime.now()
@@ -111,13 +120,30 @@ class ClipRecorder:
         os.makedirs(target_dir, exist_ok=True)
         filename = os.path.join(target_dir, f"motion_{timestamp}.mp4")
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        self._writer = cv2.VideoWriter(filename, fourcc, self.fps, (width, height))
+        writer = cv2.VideoWriter(filename, fourcc, self.fps, (width, height))
+        if not writer.isOpened():
+            writer.release()
+            hailo_logger.error(
+                "Failed to open VideoWriter for %s (fps=%s, size=%dx%d). "
+                "Skipping this motion event.",
+                filename, self.fps, width, height,
+            )
+            return
+        self._writer = writer
+        self._current_path = filename
+        self._frames_written = 0
         hailo_logger.info("Motion entered. Started clip recording: %s", filename)
 
     def _stop(self):
         self._writer.release()
+        duration = self._frames_written / self.fps if self.fps else 0.0
+        hailo_logger.info(
+            "Motion left. Stopped clip recording: %s (%d frames, %.1fs)",
+            self._current_path, self._frames_written, duration,
+        )
         self._writer = None
-        hailo_logger.info("Motion left. Dynamic clip recording stopped.")
+        self._current_path = None
+        self._frames_written = 0
 
 
 # -----------------------------------------------------------------------------------------------
@@ -197,15 +223,17 @@ def app_callback(element, buffer, user_data):
     motion_boxes = user_data.motion_detector.detect(frame, width, height)
     motion_detected = bool(motion_boxes)
 
-    _draw_motion_overlay(frame_bgr, motion_boxes)
-
+    # Record the clean frame *before* drawing any overlays so the saved
+    # clip is overlay-free (useful for evidentiary review).
     if user_data.record_clips:
         user_data.recorder.feed(frame_bgr, motion_detected, width, height)
 
     if user_data.use_frame:
+        display_frame = frame_bgr.copy()
+        _draw_motion_overlay(display_frame, motion_boxes)
         recording = user_data.recorder.recording if user_data.recorder else False
-        _draw_hud(frame_bgr, len(motion_boxes), recording)
-        user_data.set_frame(frame_bgr)
+        _draw_hud(display_frame, len(motion_boxes), recording)
+        user_data.set_frame(display_frame)
 
     if motion_detected:
         hailo_logger.info(
@@ -214,10 +242,14 @@ def app_callback(element, buffer, user_data):
 
 
 def main():
-    hailo_logger.info("Starting Detection App.")
+    hailo_logger.info("Starting Motion Recorder App.")
     user_data = user_app_callback_class()
     app = GStreamerMotionRecorderApp(app_callback, user_data)
-    app.run()
+    try:
+        app.run()
+    finally:
+        if user_data.recorder is not None:
+            user_data.recorder.close()
 
 
 if __name__ == "__main__":
