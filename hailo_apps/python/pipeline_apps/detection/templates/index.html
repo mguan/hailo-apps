@@ -343,35 +343,17 @@
                 probe.style.display = 'none';
                 probe.preload = 'metadata';
 
-                const cleanup = () => {
-                    try {
-                        probe.onloadedmetadata = null;
-                        probe.onerror = null;
-                        if (probe.parentNode) {
-                            probe.parentNode.removeChild(probe);
-                        }
-                    } catch (e) {}
-                };
-
-                probe.onloadedmetadata = () => {
-                    const duration = probe.duration;
-                    if (isFinite(duration) && duration > 0) {
-                        const text = formatDuration(duration);
-                        durationCache.set(path, text);
-                        pendingProbes.delete(path);
-                        resolve(text);
-                    } else {
-                        pendingProbes.delete(path);
-                        resolve('');
-                    }
-                    cleanup();
-                };
-
-                probe.onerror = () => {
+                const finish = (text) => {
+                    probe.onloadedmetadata = null;
+                    probe.onerror = null;
+                    probe.remove();
+                    if (text) durationCache.set(path, text);
                     pendingProbes.delete(path);
-                    resolve('');
-                    cleanup();
+                    resolve(text);
                 };
+
+                probe.onloadedmetadata = () => finish(formatDuration(probe.duration));
+                probe.onerror = () => finish('');
 
                 document.body.appendChild(probe);
                 probe.src = `/clips/${path}?t=${Date.now()}`;
