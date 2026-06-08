@@ -22,7 +22,7 @@ from hailo_apps.python.core.common.buffer_utils import (
 )
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
-import hailo_apps.python.pipeline_apps.detection.web_app as web_app
+import hailo_apps.python.pipeline_apps.detection.web_server as web_server
 
 hailo_logger = get_logger(__name__)
 # endregion imports
@@ -119,7 +119,7 @@ def app_callback(element, buffer, user_data):
     if user_data.use_frame:
         user_data.set_frame(frame_bgr)
 
-    web_app.set_shared_frame(frame_bgr)
+    web_server.set_shared_frame(frame_bgr)
 
 
 def main():
@@ -129,7 +129,7 @@ def main():
     app = GStreamerMotionRecorderApp(app_callback, user_data)
 
     flask_thread = threading.Thread(
-        target=web_app.start_server,
+        target=web_server.start_server,
         kwargs={
             'host': '0.0.0.0',
             'port': user_data.web_app_port,

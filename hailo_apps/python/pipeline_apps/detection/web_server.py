@@ -6,7 +6,7 @@ import cv2
 import shutil
 from flask import Flask, render_template, Response, jsonify, send_from_directory, request
 
-app = Flask(__name__)
+server = Flask(__name__)
 
 _frame_cond = threading.Condition()
 shared_frame = None
@@ -61,7 +61,7 @@ def _prune_empty_dirs_upward(start_dir):
             return
 
 
-@app.route('/')
+@server.route('/')
 def index():
     """Serve the main dashboard."""
     return render_template('index.html')
@@ -99,13 +99,13 @@ def gen_frames():
                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
 
-@app.route('/video_feed')
+@server.route('/video_feed')
 def video_feed():
     """Video streaming route. Put this in the src attribute of an img tag."""
     return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-@app.route('/api/clips')
+@server.route('/api/clips')
 def get_clips():
     """Return a JSON list of available video clips."""
     clips = []
@@ -119,7 +119,7 @@ def get_clips():
     return jsonify(clips)
 
 
-@app.route('/clips/<path:filename>')
+@server.route('/clips/<path:filename>')
 def serve_clip(filename):
     """Serve a specific video clip."""
     filepath = _safe_path(filename)
@@ -128,7 +128,7 @@ def serve_clip(filename):
     return send_from_directory(CLIPS_DIR, filename)
 
 
-@app.route('/api/clips/<path:filename>', methods=['DELETE'])
+@server.route('/api/clips/<path:filename>', methods=['DELETE'])
 def delete_clip(filename):
     """Delete a specific video clip."""
     filepath = _safe_path(filename)
@@ -146,7 +146,7 @@ def delete_clip(filename):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route('/api/clips/delete', methods=['POST'])
+@server.route('/api/clips/delete', methods=['POST'])
 def delete_clips_bulk():
     """Delete multiple clips or subdirectories."""
     data = request.get_json() or {}
@@ -200,7 +200,7 @@ def start_server(host='0.0.0.0', port=5000, clips_dir=None):
         CLIPS_DIR = clips_dir
     os.makedirs(CLIPS_DIR, exist_ok=True)
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
-    app.run(host=host, port=port, debug=False, use_reloader=False)
+    server.run(host=host, port=port, debug=False, use_reloader=False)
 
 
 if __name__ == '__main__':
