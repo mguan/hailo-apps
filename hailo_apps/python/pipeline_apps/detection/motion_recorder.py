@@ -136,14 +136,17 @@ class FFmpegVideoWriter:
 class ClipRecorder:
     COOLDOWN_SECONDS = 3.0
 
-    def __init__(self, output_dir: str, fps: float):
+    def __init__(self, output_dir: str, fps: float, debounce_seconds: float = 4.0):
         self.output_dir = output_dir
         self.fps = fps
+        self.debounce_seconds = debounce_seconds
         self._cooldown_limit = max(1, int(round(self.COOLDOWN_SECONDS * fps)))
         self._writer = None
         self._cooldown = 0
         self._current_path = None
         self._frames_written = 0
+        self._motion_start_frame = 0
+        self._motion_last_frame = 0
 
     @property
     def recording(self) -> bool:
@@ -154,6 +157,8 @@ class ClipRecorder:
             self._cooldown = self._cooldown_limit
             if not self.recording:
                 self._start(width, height)
+                self._motion_start_frame = self._frames_written
+            self._motion_last_frame = self._frames_written
         elif self.recording:
             if self._cooldown > 0:
                 self._cooldown -= 1
@@ -195,18 +200,38 @@ class ClipRecorder:
         self._writer = writer
         self._current_path = filename
         self._frames_written = 0
+        self._motion_start_frame = 0
+        self._motion_last_frame = 0
         hailo_logger.info("Motion entered. Started clip recording: %s", filename)
 
     def _stop(self):
         self._writer.release()
         duration = self._frames_written / self.fps if self.fps else 0.0
-        hailo_logger.info(
-            "Motion left. Stopped clip recording: %s (%d frames, %.1fs)",
-            self._current_path, self._frames_written, duration,
-        )
+        motion_duration = (self._motion_last_frame - self._motion_start_frame + 1) / self.fps if self.fps else 0.0
+        
+        is_debounced = motion_duration <= self.debounce_seconds
+        
+        if is_debounced:
+            hailo_logger.info(
+                "Motion lasted %.2fs (<= %.2fs debounce). Discarding clip: %s",
+                motion_duration, self.debounce_seconds, self._current_path
+            )
+            if self._current_path and os.path.exists(self._current_path):
+                try:
+                    os.remove(self._current_path)
+                except Exception as e:
+                    hailo_logger.error("Failed to delete debounced clip %s: %s", self._current_path, e)
+        else:
+            hailo_logger.info(
+                "Motion left. Stopped clip recording: %s (%d frames, %.1fs, motion duration: %.1fs)",
+                self._current_path, self._frames_written, duration, motion_duration
+            )
+            
         self._writer = None
         self._current_path = None
         self._frames_written = 0
+        self._motion_start_frame = 0
+        self._motion_last_frame = 0
 
 
 # -----------------------------------------------------------------------------------------------
@@ -223,6 +248,7 @@ class user_app_callback_class(app_callback_class):
         self.fps = 30.0
         self.web_app_host = "0.0.0.0"
         self.web_app_port = 5000
+        self.debounce_seconds = 4.0
         # Helper objects — built lazily on the first frame
         self.motion_detector = None
         self.recorder = None
@@ -237,7 +263,11 @@ def _ensure_helpers(user_data):
             user_data.motion_min_area, user_data.motion_threshold
         )
     if user_data.record_clips and user_data.recorder is None:
-        user_data.recorder = ClipRecorder(user_data.output_dir, user_data.fps)
+        user_data.recorder = ClipRecorder(
+            user_data.output_dir,
+            user_data.fps,
+            getattr(user_data, "debounce_seconds", 4.0)
+        )
 
 
 def _draw_motion_overlay(frame_bgr, boxes):

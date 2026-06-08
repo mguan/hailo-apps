@@ -45,6 +45,7 @@ class GStreamerMotionRecorderApp(GStreamerApp):
         self.user_data.motion_threshold = opts.motion_threshold
         self.user_data.output_dir = opts.output_dir
         self.user_data.fps = float(self.frame_rate) if self.frame_rate else 30.0
+        self.user_data.debounce_seconds = opts.debounce_seconds
         
         self.user_data.web_app_host = opts.web_app_host
         self.user_data.web_app_port = opts.web_app_port
@@ -99,6 +100,12 @@ class GStreamerMotionRecorderApp(GStreamerApp):
             type=str,
             default="/home/pi/Videos",
             help="Root directory where dynamic video clips are saved (default: /home/pi/Videos)",
+        )
+        parser.add_argument(
+            "--debounce-seconds",
+            type=float,
+            default=4.0,
+            help="Debounce seconds for motion detection. If motion lasted this long or less, do not record. (default: 4.0)",
         )
 
         parser.add_argument(

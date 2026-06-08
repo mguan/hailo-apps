@@ -46,7 +46,7 @@ def tmp_output_dir():
 # -----------------------------------------------------------------------------
 
 def test_clip_recorder_directory_structure(tmp_output_dir):
-    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS)
+    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS, debounce_seconds=0.0)
     frame = np.zeros((HEIGHT, WIDTH, 3), dtype=np.uint8)
 
     recorder.feed(frame, motion=True, width=WIDTH, height=HEIGHT)
@@ -74,7 +74,7 @@ def test_clip_recorder_directory_structure(tmp_output_dir):
 
 def test_cooldown_keeps_recording_until_limit(tmp_output_dir):
     """During cooldown, the recorder must continue writing frames."""
-    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS)
+    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS, debounce_seconds=0.0)
     frame = _gray_frame()
 
     recorder.feed(frame, motion=True, width=WIDTH, height=HEIGHT)
@@ -98,7 +98,7 @@ def test_cooldown_keeps_recording_until_limit(tmp_output_dir):
 
 def test_motion_during_cooldown_resets_it(tmp_output_dir):
     """A motion frame during cooldown must re-arm the cooldown timer."""
-    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS)
+    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS, debounce_seconds=0.0)
     frame = _gray_frame()
 
     recorder.feed(frame, motion=True, width=WIDTH, height=HEIGHT)
@@ -123,7 +123,7 @@ def test_motion_during_cooldown_resets_it(tmp_output_dir):
 # -----------------------------------------------------------------------------
 
 def test_multiple_events_produce_distinct_files(tmp_output_dir):
-    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS)
+    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS, debounce_seconds=0.0)
     frame = _gray_frame()
 
     def _one_event():
@@ -149,7 +149,7 @@ def test_multiple_events_produce_distinct_files(tmp_output_dir):
 
 def test_close_flushes_in_progress_recording(tmp_output_dir):
     """Simulates Ctrl+C mid-recording: close() must release the writer."""
-    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS)
+    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS, debounce_seconds=0.0)
     frame = _gray_frame()
 
     recorder.feed(frame, motion=True, width=WIDTH, height=HEIGHT)
@@ -190,11 +190,72 @@ def test_videowriter_open_failure_is_handled(tmp_output_dir, monkeypatch, caplog
     import hailo_apps.python.pipeline_apps.detection.motion_recorder as mr
     monkeypatch.setattr(mr, "FFmpegVideoWriter", FakeWriter)
 
-    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS)
+    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS, debounce_seconds=0.0)
     frame = _gray_frame()
     recorder.feed(frame, motion=True, width=WIDTH, height=HEIGHT)
 
     assert not recorder.recording, "Recorder should not be in recording state when writer fails to open"
+
+
+def test_debounce_discards_short_motion(tmp_output_dir):
+    # FPS is 30.0, debounce is 4.0s.
+    # If motion lasts 4.0s or less, it must be discarded.
+    # At 30 FPS, 4.0s is 120 frames. So if motion is detected on only 120 frames,
+    # motion_duration = 120 / 30 = 4.0s <= 4.0s -> discarded.
+    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS, debounce_seconds=4.0)
+    frame = _gray_frame()
+
+    # Start motion
+    recorder.feed(frame, motion=True, width=WIDTH, height=HEIGHT)
+    assert recorder.recording
+
+    # Feed 119 more motion frames (total 120 motion frames)
+    for _ in range(119):
+        recorder.feed(frame, motion=True, width=WIDTH, height=HEIGHT)
+
+    # Motion stops
+    for _ in range(recorder._cooldown_limit + 1):
+        recorder.feed(frame, motion=False, width=WIDTH, height=HEIGHT)
+    assert not recorder.recording
+
+    # Confirm directory has NO clips
+    now = datetime.datetime.now()
+    target_dir = os.path.join(
+        tmp_output_dir, now.strftime("%Y"), now.strftime("%m"), now.strftime("%d"),
+    )
+    if os.path.exists(target_dir):
+        files = os.listdir(target_dir)
+        assert len(files) == 0, f"Expected 0 clips due to debounce, found: {files}"
+
+
+def test_debounce_keeps_long_motion(tmp_output_dir):
+    # FPS is 30.0, debounce is 4.0s.
+    # If motion lasts > 4.0s, it must be kept.
+    # At 30 FPS, 121 frames of motion is 121/30 = 4.03s > 4.0s -> kept.
+    recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS, debounce_seconds=4.0)
+    frame = _gray_frame()
+
+    # Start motion
+    recorder.feed(frame, motion=True, width=WIDTH, height=HEIGHT)
+    assert recorder.recording
+
+    # Feed 120 more motion frames (total 121 motion frames)
+    for _ in range(120):
+        recorder.feed(frame, motion=True, width=WIDTH, height=HEIGHT)
+
+    # Motion stops
+    for _ in range(recorder._cooldown_limit + 1):
+        recorder.feed(frame, motion=False, width=WIDTH, height=HEIGHT)
+    assert not recorder.recording
+
+    # Confirm directory has 1 clip
+    now = datetime.datetime.now()
+    target_dir = os.path.join(
+        tmp_output_dir, now.strftime("%Y"), now.strftime("%m"), now.strftime("%d"),
+    )
+    assert os.path.isdir(target_dir)
+    files = os.listdir(target_dir)
+    assert len(files) == 1, f"Expected 1 clip, found: {files}"
 
 
 # -----------------------------------------------------------------------------
