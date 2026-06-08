@@ -85,6 +85,7 @@ def gen_frames():
         # Throttle without busy-sleeping: skip frames that come in faster than STREAM_FPS.
         now = time.monotonic()
         if now - last_emit < min_interval:
+            last_seq = seq
             continue
 
         last_seq = seq
