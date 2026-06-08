@@ -158,6 +158,9 @@ class user_app_callback_class(app_callback_class):
         self.motion_threshold = 15
         self.output_dir = "/home/pi/Videos"
         self.fps = 30.0
+        self.web_app_enabled = True
+        self.web_app_host = "127.0.0.1"
+        self.web_app_port = 5000
         # Helper objects — built lazily on the first frame
         self.motion_detector = None
         self.recorder = None
@@ -204,8 +207,10 @@ def app_callback(element, buffer, user_data):
         hailo_logger.warning("Received None buffer.")
         return
 
+    web_app_enabled = getattr(user_data, "web_app_enabled", False)
+
     # Skip entirely if nothing downstream will consume a frame
-    if not (user_data.record_clips or user_data.use_frame):
+    if not (user_data.record_clips or user_data.use_frame or web_app_enabled):
         return
 
     pad = element.get_static_pad("src")
@@ -231,10 +236,17 @@ def app_callback(element, buffer, user_data):
     if user_data.record_clips:
         user_data.recorder.feed(frame_bgr, motion_detected, width, height)
 
-    if user_data.use_frame:
+    if user_data.use_frame or web_app_enabled:
         recording = user_data.recorder.recording if user_data.recorder else False
         _draw_hud(frame_bgr, len(motion_boxes), recording)
-        user_data.set_frame(frame_bgr)
+
+        if user_data.use_frame:
+            user_data.set_frame(frame_bgr)
+
+        if web_app_enabled:
+            import hailo_apps.python.pipeline_apps.detection.web_app as web_app
+            web_app.shared_frame = frame_bgr
+            web_app.frame_seq += 1
 
     if motion_detected:
         hailo_logger.info(
@@ -246,6 +258,25 @@ def main():
     hailo_logger.info("Starting Motion Recorder App.")
     user_data = user_app_callback_class()
     app = GStreamerMotionRecorderApp(app_callback, user_data)
+
+    if getattr(user_data, "web_app_enabled", False):
+        import threading
+        import hailo_apps.python.pipeline_apps.detection.web_app as web_app
+        # Point Flask's CLIPS_DIR to the configured motion recorder output directory
+        web_app.CLIPS_DIR = user_data.output_dir
+        os.makedirs(web_app.CLIPS_DIR, exist_ok=True)
+
+        # Start the Flask web server in a background daemon thread
+        flask_thread = threading.Thread(
+            target=web_app.start_server,
+            kwargs={'host': user_data.web_app_host, 'port': user_data.web_app_port},
+            daemon=True
+        )
+        flask_thread.start()
+        hailo_logger.info(
+            f"Web dashboard started on http://{user_data.web_app_host}:{user_data.web_app_port}"
+        )
+
     try:
         app.run()
     finally:

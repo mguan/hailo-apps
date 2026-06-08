@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLO Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --text-color: #f8fafc;
+            --accent-color: #3b82f6;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Outfit', sans-serif;
+            background: radial-gradient(circle at top right, #1e1b4b, #0f172a, #020617);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 1.5rem 2rem;
+            background: rgba(15, 23, 42, 0.8);
+            border-bottom: 1px solid var(--card-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            margin: 0;
+            font-weight: 600;
+            font-size: 1.8rem;
+            background: linear-gradient(to right, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-badge {
+            padding: 0.4rem 1rem;
+            border-radius: 20px;
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .container {
+            flex: 1;
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card h2 {
+            margin: 0 0 1rem;
+            font-size: 1.4rem;
+            font-weight: 400;
+        }
+
+        .video-container {
+            width: 100%;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+            aspect-ratio: 16/9;
+        }
+
+        .video-container img,
+        .video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .clips-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            overflow-y: auto;
+            flex: 1;
+            max-height: 600px;
+        }
+
+        .day-group {
+            margin-bottom: 1rem;
+        }
+
+        .day-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem 0.2rem;
+            color: #cbd5e1;
+            font-weight: 600;
+            border-bottom: 1px solid var(--card-border);
+            margin-bottom: 0.5rem;
+        }
+
+        .day-count {
+            font-size: 0.8rem;
+            color: #64748b;
+            font-weight: 400;
+        }
+
+        .clip-item {
+            padding: 0.7rem;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: background 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .clip-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .clip-icon {
+            width: 34px;
+            height: 34px;
+            flex-shrink: 0;
+            background: var(--accent-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .clip-info {
+            flex: 1;
+        }
+
+        .clip-name {
+            font-weight: 600;
+        }
+
+        .clip-file {
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        .clip-duration {
+            font-size: 0.8rem;
+            color: #cbd5e1;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 0.1rem 0.5rem;
+            border-radius: 12px;
+            flex-shrink: 0;
+        }
+
+        /* Shared style for every delete button (per-clip and per-day). */
+        .delete-btn {
+            background: transparent;
+            border: none;
+            color: #64748b;
+            cursor: pointer;
+            padding: 0.4rem 0.6rem;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-family: inherit;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .delete-btn:hover {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .delete-btn.confirm-state {
+            color: #fca5a5;
+            background: rgba(239, 68, 68, 0.3);
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #94a3b8;
+            padding: 2rem;
+            font-style: italic;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            width: 80%;
+            max-width: 1000px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            position: relative;
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        @media (max-width: 900px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>YOLO Intelligence</h1>
+        <div class="status-badge">System Active</div>
+    </header>
+
+    <div class="container">
+        <div class="card">
+            <h2>Live Camera Feed</h2>
+            <div class="video-container">
+                <img src="/video_feed" alt="Live Camera Feed">
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Saved Clips</h2>
+            <div class="clips-list" id="clips-list">
+                <div class="empty-state">Loading clips...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Video Player Modal -->
+    <div class="modal" id="video-modal">
+        <div class="modal-content">
+            <span class="close-btn" id="close-modal">&times;</span>
+            <div class="video-container">
+                <video id="video-player" controls autoplay>
+                    Your browser does not support HTML5 video.
+                </video>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TRASH_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+        const PLAY_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+
+        const modal = document.getElementById('video-modal');
+        const videoPlayer = document.getElementById('video-player');
+
+        function closeModal() {
+            modal.style.display = 'none';
+            videoPlayer.pause();
+            videoPlayer.src = '';
+        }
+        document.getElementById('close-modal').onclick = closeModal;
+        window.onclick = (e) => { if (e.target === modal) closeModal(); };
+
+        function playClip(path) {
+            videoPlayer.src = `/clips/${path}?t=${Date.now()}`;
+            modal.style.display = 'flex';
+            videoPlayer.play();
+        }
+
+        // Group key + readable labels are both derived from the clip path
+        // "YYYY/MM/DD/<label>_YYYYMMDD_HHMMSS_mmm.mp4".
+        function dayOf(path) {
+            const p = path.split('/');
+            if (p.length >= 4) return `${p[0]}-${p[1]}-${p[2]}`;
+            const m = path.match(/(\d{4})(\d{2})(\d{2})/);
+            return m ? `${m[1]}-${m[2]}-${m[3]}` : 'Other';
+        }
+
+        function labelOf(filename) {
+            const m = filename.match(/^(.*?)_\d{8}_(\d{2})(\d{2})(\d{2})/);
+            return m ? `${m[1]} · ${m[2]}:${m[3]}:${m[4]}` : filename;
+        }
+
+        // Read each clip's duration from its video metadata (the browser only
+        // fetches the mp4 header, not the whole file) and cache it by path so
+        // the periodic refresh doesn't re-probe clips we've already measured.
+        const durationCache = new Map();
+
+        function formatDuration(seconds) {
+            if (!isFinite(seconds)) return '';
+            const m = Math.floor(seconds / 60);
+            const s = Math.round(seconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function fillDuration(path, el) {
+            if (durationCache.has(path)) {
+                el.textContent = durationCache.get(path);
+                return;
+            }
+            const probe = document.createElement('video');
+            probe.preload = 'metadata';
+            probe.onloadedmetadata = () => {
+                const text = formatDuration(probe.duration);
+                durationCache.set(path, text);
+                el.textContent = text;
+            };
+            probe.src = `/clips/${path}`;
+        }
+
+        // Turn a button into a two-click confirm: first click arms it (and shows
+        // `confirmLabel`), a second click within 3s runs onConfirm.
+        function armConfirm(btn, idleLabel, confirmLabel, onConfirm) {
+            let timer = null;
+            const reset = () => {
+                btn.classList.remove('confirm-state');
+                btn.innerHTML = idleLabel;
+                timer = null;
+            };
+            reset();
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                if (!timer) {
+                    btn.classList.add('confirm-state');
+                    btn.innerHTML = confirmLabel;
+                    timer = setTimeout(reset, 3000);
+                } else {
+                    clearTimeout(timer);
+                    onConfirm();
+                }
+            };
+        }
+
+        // Pause auto-refresh while a delete is awaiting confirmation, so the
+        // list isn't rebuilt out from under the user mid-click.
+        const isConfirming = () => !!document.querySelector('.confirm-state');
+
+        async function deletePaths(paths) {
+            try {
+                const res = await fetch('/api/clips/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paths }),
+                });
+                if (!res.ok) throw new Error((await res.json()).message || 'delete failed');
+                loadClips();
+            } catch (err) {
+                console.error(err);
+                alert('Failed to delete clip(s).');
+                loadClips();
+            }
+        }
+
+        function renderClip(clip) {
+            const item = document.createElement('div');
+            item.className = 'clip-item';
+            item.onclick = () => playClip(clip.path);
+            item.innerHTML = `
+                <div class="clip-icon">${PLAY_SVG}</div>
+                <div class="clip-info">
+                    <div class="clip-name">${labelOf(clip.filename)}</div>
+                    <div class="clip-file">${clip.filename}</div>
+                </div>
+                <span class="clip-duration"></span>`;
+            fillDuration(clip.path, item.querySelector('.clip-duration'));
+
+            const del = document.createElement('button');
+            del.className = 'delete-btn';
+            del.title = 'Delete clip';
+            armConfirm(del, TRASH_SVG, `${TRASH_SVG}<span>Delete?</span>`,
+                () => deletePaths([clip.path]));
+            item.appendChild(del);
+            return item;
+        }
+
+        function renderDay(day, clips, list) {
+            const group = document.createElement('div');
+            group.className = 'day-group';
+
+            const header = document.createElement('div');
+            header.className = 'day-header';
+            header.innerHTML = `<span>${day} <span class="day-count">${clips.length} clips</span></span>`;
+
+            const delAll = document.createElement('button');
+            delAll.className = 'delete-btn';
+            armConfirm(delAll, `${TRASH_SVG}<span>All</span>`, `${TRASH_SVG}<span>Delete all?</span>`,
+                () => deletePaths(clips.map(c => c.path)));
+            header.appendChild(delAll);
+
+            group.appendChild(header);
+            clips.forEach(clip => group.appendChild(renderClip(clip)));
+            list.appendChild(group);
+        }
+
+        async function loadClips() {
+            const list = document.getElementById('clips-list');
+            try {
+                const paths = await (await fetch('/api/clips')).json();
+                if (paths.length === 0) {
+                    list.innerHTML = '<div class="empty-state">No clips recorded yet. Walk in front of the camera!</div>';
+                    return;
+                }
+
+                // paths arrive newest-first; group by day preserving that order.
+                const days = new Map();
+                paths.forEach(path => {
+                    const day = dayOf(path);
+                    if (!days.has(day)) days.set(day, []);
+                    days.get(day).push({ path, filename: path.split('/').pop() });
+                });
+
+                list.innerHTML = '';
+                days.forEach((clips, day) => renderDay(day, clips, list));
+            } catch (err) {
+                console.error('Error loading clips:', err);
+                list.innerHTML = '<div class="empty-state">Error loading clips.</div>';
+            }
+        }
+
+        loadClips();
+        setInterval(() => { if (!isConfirming()) loadClips(); }, 5000);
+    </script>
+</body>
+
+</html>

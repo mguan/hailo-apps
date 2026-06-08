@@ -45,6 +45,10 @@ class GStreamerMotionRecorderApp(GStreamerApp):
         self.user_data.motion_threshold = opts.motion_threshold
         self.user_data.output_dir = opts.output_dir
         self.user_data.fps = float(self.frame_rate) if self.frame_rate else 30.0
+        
+        self.user_data.web_app_enabled = not opts.no_web_app
+        self.user_data.web_app_host = opts.web_app_host
+        self.user_data.web_app_port = opts.web_app_port
 
         if opts.record_clips:
             os.makedirs(opts.output_dir, exist_ok=True)
@@ -96,6 +100,23 @@ class GStreamerMotionRecorderApp(GStreamerApp):
             type=str,
             default="/home/pi/Videos",
             help="Root directory where dynamic video clips are saved (default: /home/pi/Videos)",
+        )
+        parser.add_argument(
+            "--no-web-app",
+            action="store_true",
+            help="Disable the Flask web dashboard for remote live view and playback",
+        )
+        parser.add_argument(
+            "--web-app-host",
+            type=str,
+            default="127.0.0.1",
+            help="Host interface address to bind the web dashboard server to (default: 127.0.0.1)",
+        )
+        parser.add_argument(
+            "--web-app-port",
+            type=int,
+            default=5000,
+            help="Network port to run the web dashboard server on (default: 5000)",
         )
 
     def get_pipeline_string(self):
