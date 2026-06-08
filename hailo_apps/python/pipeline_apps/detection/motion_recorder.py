@@ -159,7 +159,7 @@ class user_app_callback_class(app_callback_class):
         self.output_dir = "/home/pi/Videos"
         self.fps = 30.0
         self.web_app_enabled = True
-        self.web_app_host = "127.0.0.1"
+        self.web_app_host = "0.0.0.0"
         self.web_app_port = 5000
         # Helper objects — built lazily on the first frame
         self.motion_detector = None

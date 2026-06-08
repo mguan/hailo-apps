@@ -173,7 +173,7 @@ def delete_clips_bulk():
         "errors": errors
     }), 200
 
-def start_server(host='127.0.0.1', port=5000):
+def start_server(host='0.0.0.0', port=5000):
     """Start the Flask server. Designed to be run in a thread."""
     # Run with reloader=False to avoid issues when running in a background thread
     app.run(host=host, port=port, debug=False, use_reloader=False)

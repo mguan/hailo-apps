@@ -109,8 +109,8 @@ class GStreamerMotionRecorderApp(GStreamerApp):
         parser.add_argument(
             "--web-app-host",
             type=str,
-            default="127.0.0.1",
-            help="Host interface address to bind the web dashboard server to (default: 127.0.0.1)",
+            default="0.0.0.0",
+            help="Host interface address to bind the web dashboard server to (default: 0.0.0.0)",
         )
         parser.add_argument(
             "--web-app-port",
