@@ -1,6 +1,7 @@
 # region imports
 # Standard library imports
 import datetime
+import threading
 import os
 
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
@@ -122,7 +123,6 @@ def app_callback(element, buffer, user_data):
 
 
 def main():
-    import threading
 
     hailo_logger.info("Starting Motion Recorder App.")
     user_data = user_app_callback_class()

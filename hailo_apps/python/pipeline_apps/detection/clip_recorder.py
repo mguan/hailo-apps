@@ -12,7 +12,7 @@ hailo_logger = get_logger(__name__)
 
 
 # -----------------------------------------------------------------------------------------------
-# Fallback VideoWriter using FFmpeg subprocess for efficient browser-compatible MP4 encoding
+# VideoWriter using FFmpeg subprocess for efficient browser-compatible MP4 encoding
 # -----------------------------------------------------------------------------------------------
 class FFmpegVideoWriter:
     def __init__(self, filename, fps, frame_size):
