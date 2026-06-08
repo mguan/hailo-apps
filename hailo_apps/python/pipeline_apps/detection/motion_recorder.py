@@ -118,8 +118,8 @@ class ClipRecorder:
             now.strftime("%d")
         )
         os.makedirs(target_dir, exist_ok=True)
-        filename = os.path.join(target_dir, f"motion_{timestamp}.mp4")
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        filename = os.path.join(target_dir, f"motion_{timestamp}.webm")
+        fourcc = cv2.VideoWriter_fourcc(*"vp80")
         writer = cv2.VideoWriter(filename, fourcc, self.fps, (width, height))
         if not writer.isOpened():
             writer.release()
