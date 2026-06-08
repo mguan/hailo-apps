@@ -288,6 +288,31 @@ def _draw_hud(frame_bgr, num_zones: int, recording: bool):
         )
 
 
+def _draw_timestamp(frame_bgr):
+    now = datetime.datetime.now()
+    timestamp_str = now.strftime("%Y-%m-%d %H:%M:%S")
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale = 0.8
+    thickness = 2
+    color = (255, 255, 255)
+    
+    text_size, _ = cv2.getTextSize(timestamp_str, font, scale, thickness)
+    text_w, text_h = text_size
+    _, frame_w = frame_bgr.shape[:2]
+    
+    x = frame_w - text_w - 20
+    y = text_h + 20
+    
+    cv2.rectangle(
+        frame_bgr,
+        (x - 5, y - text_h - 5),
+        (x + text_w + 5, y + 5),
+        (0, 0, 0),
+        -1
+    )
+    cv2.putText(frame_bgr, timestamp_str, (x, y), font, scale, color, thickness, cv2.LINE_AA)
+
+
 # -----------------------------------------------------------------------------------------------
 # User-defined callback function
 # -----------------------------------------------------------------------------------------------
@@ -315,6 +340,8 @@ def app_callback(element, buffer, user_data):
     # saved clip. HUD (zone count + RECORDING indicator) is display-only and
     # is drawn after recording.
     _draw_motion_overlay(frame_bgr, motion_boxes)
+
+    _draw_timestamp(frame_bgr)
 
     user_data.recorder.feed(frame_bgr, motion_detected, width, height)
 
