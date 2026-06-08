@@ -321,27 +321,73 @@
         // fetches the mp4 header, not the whole file) and cache it by path so
         // the periodic refresh doesn't re-probe clips we've already measured.
         const durationCache = new Map();
+        const pendingProbes = new Map();
 
         function formatDuration(seconds) {
-            if (!isFinite(seconds)) return '';
+            if (!isFinite(seconds) || seconds <= 0) return '';
             const m = Math.floor(seconds / 60);
             const s = Math.round(seconds % 60).toString().padStart(2, '0');
             return `${m}:${s}`;
         }
 
-        function fillDuration(path, el) {
+        function getDuration(path) {
             if (durationCache.has(path)) {
-                el.textContent = durationCache.get(path);
-                return;
+                return Promise.resolve(durationCache.get(path));
             }
-            const probe = document.createElement('video');
-            probe.preload = 'metadata';
-            probe.onloadedmetadata = () => {
-                const text = formatDuration(probe.duration);
-                durationCache.set(path, text);
-                el.textContent = text;
-            };
-            probe.src = `/clips/${path}`;
+            if (pendingProbes.has(path)) {
+                return pendingProbes.get(path);
+            }
+
+            const promise = new Promise((resolve) => {
+                const probe = document.createElement('video');
+                probe.style.display = 'none';
+                probe.preload = 'metadata';
+
+                const cleanup = () => {
+                    try {
+                        probe.onloadedmetadata = null;
+                        probe.onerror = null;
+                        if (probe.parentNode) {
+                            probe.parentNode.removeChild(probe);
+                        }
+                    } catch (e) {}
+                };
+
+                probe.onloadedmetadata = () => {
+                    const duration = probe.duration;
+                    if (isFinite(duration) && duration > 0) {
+                        const text = formatDuration(duration);
+                        durationCache.set(path, text);
+                        pendingProbes.delete(path);
+                        resolve(text);
+                    } else {
+                        pendingProbes.delete(path);
+                        resolve('');
+                    }
+                    cleanup();
+                };
+
+                probe.onerror = () => {
+                    pendingProbes.delete(path);
+                    resolve('');
+                    cleanup();
+                };
+
+                document.body.appendChild(probe);
+                probe.src = `/clips/${path}?t=${Date.now()}`;
+                probe.load();
+            });
+
+            pendingProbes.set(path, promise);
+            return promise;
+        }
+
+        function fillDuration(path, el) {
+            getDuration(path).then((text) => {
+                if (text) {
+                    el.textContent = text;
+                }
+            });
         }
 
         // Turn a button into a two-click confirm: first click arms it (and shows
