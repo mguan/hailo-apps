@@ -188,7 +188,7 @@ def test_videowriter_open_failure_is_handled(tmp_output_dir, monkeypatch, caplog
             raise AssertionError("write() called after open failure")
 
     import hailo_apps.python.pipeline_apps.detection.motion_recorder as mr
-    monkeypatch.setattr(mr.cv2, "VideoWriter", FakeWriter)
+    monkeypatch.setattr(mr, "FFmpegVideoWriter", FakeWriter)
 
     recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS)
     frame = _gray_frame()

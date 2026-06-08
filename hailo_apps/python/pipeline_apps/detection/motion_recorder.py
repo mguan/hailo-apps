@@ -2,6 +2,7 @@
 # Standard library imports
 import datetime
 import os
+import subprocess
 
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
@@ -70,6 +71,65 @@ class MotionDetector:
 
 
 # -----------------------------------------------------------------------------------------------
+# Fallback VideoWriter using FFmpeg subprocess for efficient browser-compatible MP4 encoding
+# -----------------------------------------------------------------------------------------------
+class FFmpegVideoWriter:
+    def __init__(self, filename, fourcc, fps, frame_size):
+        self.filename = filename
+        self.fps = fps
+        self.width, self.height = frame_size
+        self._process = None
+        self._opened = False
+        
+        # Start ffmpeg subprocess
+        cmd = [
+            'ffmpeg', '-y',
+            '-f', 'rawvideo',
+            '-vcodec', 'rawvideo',
+            '-pix_fmt', 'bgr24',
+            '-s', f'{self.width}x{self.height}',
+            '-r', str(self.fps),
+            '-i', '-',
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-tune', 'zerolatency',
+            '-b:v', '6000k',
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            self.filename
+        ]
+        try:
+            self._process = subprocess.Popen(
+                cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            self._opened = True
+        except Exception as e:
+            hailo_logger.error("Failed to start FFmpeg subprocess: %s", e)
+            self._opened = False
+
+    def isOpened(self) -> bool:
+        return self._opened and self._process is not None and self._process.poll() is None
+
+    def write(self, frame):
+        if self.isOpened():
+            try:
+                self._process.stdin.write(frame.tobytes())
+            except Exception as e:
+                hailo_logger.error("Failed to write frame to FFmpeg: %s", e)
+
+    def release(self):
+        if self._process:
+            try:
+                if self._process.stdin:
+                    self._process.stdin.close()
+                self._process.wait()
+            except Exception:
+                pass
+            self._process = None
+        self._opened = False
+
+
+# -----------------------------------------------------------------------------------------------
 # Clip recording
 # -----------------------------------------------------------------------------------------------
 class ClipRecorder:
@@ -118,9 +178,11 @@ class ClipRecorder:
             now.strftime("%d")
         )
         os.makedirs(target_dir, exist_ok=True)
-        filename = os.path.join(target_dir, f"motion_{timestamp}.webm")
-        fourcc = cv2.VideoWriter_fourcc(*"vp80")
-        writer = cv2.VideoWriter(filename, fourcc, self.fps, (width, height))
+        filename = os.path.join(target_dir, f"motion_{timestamp}.mp4")
+        fourcc = cv2.VideoWriter_fourcc(*"avc1")
+        
+        writer = FFmpegVideoWriter(filename, fourcc, self.fps, (width, height))
+
         if not writer.isOpened():
             writer.release()
             hailo_logger.error(
