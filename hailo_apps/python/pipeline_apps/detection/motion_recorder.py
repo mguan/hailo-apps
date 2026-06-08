@@ -75,14 +75,13 @@ class MotionDetector:
 # Fallback VideoWriter using FFmpeg subprocess for efficient browser-compatible MP4 encoding
 # -----------------------------------------------------------------------------------------------
 class FFmpegVideoWriter:
-    def __init__(self, filename, fourcc, fps, frame_size):
+    def __init__(self, filename, fps, frame_size):
         self.filename = filename
         self.fps = fps
         self.width, self.height = frame_size
         self._process = None
         self._opened = False
-        
-        # Start ffmpeg subprocess
+
         cmd = [
             'ffmpeg', '-y',
             '-f', 'rawvideo',
@@ -124,8 +123,8 @@ class FFmpegVideoWriter:
                 if self._process.stdin:
                     self._process.stdin.close()
                 self._process.wait()
-            except Exception:
-                pass
+            except Exception as e:
+                hailo_logger.error("Error releasing FFmpeg subprocess for %s: %s", self.filename, e)
             self._process = None
         self._opened = False
 
@@ -185,9 +184,8 @@ class ClipRecorder:
         )
         os.makedirs(target_dir, exist_ok=True)
         filename = os.path.join(target_dir, f"motion_{timestamp}.mp4")
-        fourcc = cv2.VideoWriter_fourcc(*"avc1")
-        
-        writer = FFmpegVideoWriter(filename, fourcc, self.fps, (width, height))
+
+        writer = FFmpegVideoWriter(filename, self.fps, (width, height))
 
         if not writer.isOpened():
             writer.release()
@@ -208,10 +206,8 @@ class ClipRecorder:
         self._writer.release()
         duration = self._frames_written / self.fps if self.fps else 0.0
         motion_duration = (self._motion_last_frame - self._motion_start_frame + 1) / self.fps if self.fps else 0.0
-        
-        is_debounced = motion_duration <= self.debounce_seconds
-        
-        if is_debounced:
+
+        if motion_duration <= self.debounce_seconds:
             hailo_logger.info(
                 "Motion lasted %.2fs (<= %.2fs debounce). Discarding clip: %s",
                 motion_duration, self.debounce_seconds, self._current_path
@@ -226,7 +222,7 @@ class ClipRecorder:
                 "Motion left. Stopped clip recording: %s (%d frames, %.1fs, motion duration: %.1fs)",
                 self._current_path, self._frames_written, duration, motion_duration
             )
-            
+
         self._writer = None
         self._current_path = None
         self._frames_written = 0
@@ -238,35 +234,14 @@ class ClipRecorder:
 # User-defined class to be used in the callback function
 # -----------------------------------------------------------------------------------------------
 class user_app_callback_class(app_callback_class):
-    def __init__(self):
-        super().__init__()
-        self.motion_min_area = 50
-        self.motion_threshold = 15
-        self.output_dir = "/home/pi/Videos"
-        self.fps = 30.0
-        self.web_app_port = 5000
-        self.debounce_seconds = 4.0
-        # Helper objects — built lazily on the first frame
-        self.motion_detector = None
-        self.recorder = None
+    motion_detector: "MotionDetector"
+    recorder: "ClipRecorder"
+    web_app_port: int
 
 
 # -----------------------------------------------------------------------------------------------
 # Drawing helpers
 # -----------------------------------------------------------------------------------------------
-def _ensure_helpers(user_data):
-    if user_data.motion_detector is None:
-        user_data.motion_detector = MotionDetector(
-            user_data.motion_min_area, user_data.motion_threshold
-        )
-    if user_data.recorder is None:
-        user_data.recorder = ClipRecorder(
-            user_data.output_dir,
-            user_data.fps,
-            getattr(user_data, "debounce_seconds", 4.0)
-        )
-
-
 def _draw_motion_overlay(frame_bgr, boxes):
     for (xmin, ymin, xmax, ymax) in boxes:
         cv2.rectangle(frame_bgr, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
@@ -330,24 +305,18 @@ def app_callback(element, buffer, user_data):
     if frame is None:
         return
 
-    _ensure_helpers(user_data)
-
     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     motion_boxes = user_data.motion_detector.detect(frame, width, height)
     motion_detected = bool(motion_boxes)
 
-    # Motion boxes are drawn before recording so they end up burned into the
-    # saved clip. HUD (zone count + RECORDING indicator) is display-only and
-    # is drawn after recording.
+    # Burned-in overlays — drawn before feed() so they are saved into the clip.
     _draw_motion_overlay(frame_bgr, motion_boxes)
-
     _draw_timestamp(frame_bgr)
 
     user_data.recorder.feed(frame_bgr, motion_detected, width, height)
 
-    # Always draw the HUD for the web dashboard stream
-    recording = user_data.recorder.recording if user_data.recorder else False
-    _draw_hud(frame_bgr, len(motion_boxes), recording)
+    # Display-only overlay — drawn after feed() so it never lands in the clip.
+    _draw_hud(frame_bgr, len(motion_boxes), user_data.recorder.recording)
 
     if user_data.use_frame:
         user_data.set_frame(frame_bgr)
@@ -355,23 +324,21 @@ def app_callback(element, buffer, user_data):
     web_app.set_shared_frame(frame_bgr)
 
 
-
-
 def main():
+    import threading
+
     hailo_logger.info("Starting Motion Recorder App.")
     user_data = user_app_callback_class()
     app = GStreamerMotionRecorderApp(app_callback, user_data)
 
-    import threading
-    # Point Flask's CLIPS_DIR to the configured motion recorder output directory
-    web_app.CLIPS_DIR = user_data.output_dir
-    os.makedirs(web_app.CLIPS_DIR, exist_ok=True)
-
-    # Start the Flask web server in a background daemon thread
     flask_thread = threading.Thread(
         target=web_app.start_server,
-        kwargs={'host': '0.0.0.0', 'port': user_data.web_app_port},
-        daemon=True
+        kwargs={
+            'host': '0.0.0.0',
+            'port': user_data.web_app_port,
+            'clips_dir': user_data.output_dir,
+        },
+        daemon=True,
     )
     flask_thread.start()
     hailo_logger.info(
@@ -381,8 +348,7 @@ def main():
     try:
         app.run()
     finally:
-        if user_data.recorder is not None:
-            user_data.recorder.close()
+        user_data.recorder.close()
 
 
 if __name__ == "__main__":

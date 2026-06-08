@@ -39,16 +39,25 @@ class GStreamerMotionRecorderApp(GStreamerApp):
         if not self.options_menu.gui:
             self.video_sink = "fakesink"
 
-        opts = self.options_menu
-        self.user_data.motion_min_area = opts.motion_min_area
-        self.user_data.motion_threshold = opts.motion_threshold
-        self.user_data.output_dir = opts.output_dir
-        self.user_data.fps = float(self.frame_rate) if self.frame_rate else 30.0
-        self.user_data.debounce_seconds = opts.debounce_seconds
-        
-        self.user_data.web_app_port = opts.web_app_port
+        # Local import — motion_recorder imports this module, so a top-level
+        # import would be circular.
+        from hailo_apps.python.pipeline_apps.detection.motion_recorder import (
+            ClipRecorder,
+            MotionDetector,
+        )
 
+        opts = self.options_menu
+        fps = float(self.frame_rate) if self.frame_rate else 30.0
         os.makedirs(opts.output_dir, exist_ok=True)
+
+        self.user_data.motion_detector = MotionDetector(
+            opts.motion_min_area, opts.motion_threshold
+        )
+        self.user_data.recorder = ClipRecorder(
+            opts.output_dir, fps, opts.debounce_seconds
+        )
+        self.user_data.output_dir = opts.output_dir
+        self.user_data.web_app_port = opts.web_app_port
 
         hailo_logger.debug(
             "Parent GStreamerApp initialized | arch=%s | input=%s | fps=%s | sync=%s | show_fps=%s",
