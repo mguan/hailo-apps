@@ -7,12 +7,24 @@ from flask import Flask, render_template, Response, jsonify, send_from_directory
 
 app = Flask(__name__)
 
-# Global variable to store the latest frame from the YOLO loop
-# yolo_detect.py will update this
+import threading
+
+# Global variables to store the latest frame and tracking sequence
+frame_lock = threading.Lock()
 shared_frame = None
-# Monotonically increasing counter bumped whenever a new frame is published.
-# The MJPEG generator uses it to avoid re-encoding a frame it already sent.
 frame_seq = 0
+
+def get_shared_frame():
+    """Retrieve the latest frame and its sequence atomically."""
+    with frame_lock:
+        return shared_frame, frame_seq
+
+def set_shared_frame(frame):
+    """Update the shared frame and increment the sequence atomically."""
+    global shared_frame, frame_seq
+    with frame_lock:
+        shared_frame = frame
+        frame_seq += 1
 
 # Cap the browser stream so JPEG encoding cannot monopolize the CPU and starve
 # the inference loop. The detector itself is unaffected by this rate.
@@ -33,13 +45,13 @@ def gen_frames():
     last_seq = -1
     encode_params = [cv2.IMWRITE_JPEG_QUALITY, 80]
     while True:
-        frame = shared_frame  # local copy of the reference (atomic in CPython)
-        if frame is None or frame_seq == last_seq:
+        frame, seq = get_shared_frame()
+        if frame is None or seq == last_seq:
             # No frame yet, or nothing new since we last encoded one.
             time.sleep(min_interval)
             continue
 
-        last_seq = frame_seq
+        last_seq = seq
         # Encode the frame in JPEG format
         ret, buffer = cv2.imencode('.jpg', frame, encode_params)
         if not ret:

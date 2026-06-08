@@ -21,6 +21,7 @@ from hailo_apps.python.core.common.buffer_utils import (
 )
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
+import hailo_apps.python.pipeline_apps.detection.web_app as web_app
 
 hailo_logger = get_logger(__name__)
 # endregion imports
@@ -298,9 +299,7 @@ def app_callback(element, buffer, user_data):
     if user_data.use_frame:
         user_data.set_frame(frame_bgr)
 
-    import hailo_apps.python.pipeline_apps.detection.web_app as web_app
-    web_app.shared_frame = frame_bgr
-    web_app.frame_seq += 1
+    web_app.set_shared_frame(frame_bgr)
 
     if motion_detected:
         hailo_logger.info(
@@ -314,7 +313,6 @@ def main():
     app = GStreamerMotionRecorderApp(app_callback, user_data)
 
     import threading
-    import hailo_apps.python.pipeline_apps.detection.web_app as web_app
     # Point Flask's CLIPS_DIR to the configured motion recorder output directory
     web_app.CLIPS_DIR = user_data.output_dir
     os.makedirs(web_app.CLIPS_DIR, exist_ok=True)
