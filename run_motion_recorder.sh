@@ -8,5 +8,5 @@ source ./setup_env.sh
 cd "$HOME/hailo-apps/hailo_apps/python/pipeline_apps/detection/"
 
 # Execute the application (using exec to replace the shell process for clean exit handling)
-exec python motion_recorder.py --horizontal-mirror --vertical-mirror --input rpi \
+exec python motion_recorder_app.py --horizontal-mirror --vertical-mirror --input rpi \
     --height=720 --width=1280 --output-dir="/media/pi/Backup/Events" "$@"

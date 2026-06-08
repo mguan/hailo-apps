@@ -17,6 +17,8 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     DISPLAY_PIPELINE,
     USER_CALLBACK_PIPELINE,
 )
+from hailo_apps.python.pipeline_apps.detection.motion_detector import MotionDetector
+from hailo_apps.python.pipeline_apps.detection.clip_recorder import ClipRecorder
 
 hailo_logger = get_logger(__name__)
 # endregion imports
@@ -38,13 +40,6 @@ class GStreamerMotionRecorderApp(GStreamerApp):
 
         if not self.options_menu.gui:
             self.video_sink = "fakesink"
-
-        # Local import — motion_recorder imports this module, so a top-level
-        # import would be circular.
-        from hailo_apps.python.pipeline_apps.detection.motion_recorder import (
-            ClipRecorder,
-            MotionDetector,
-        )
 
         opts = self.options_menu
         fps = float(self.frame_rate) if self.frame_rate else 30.0

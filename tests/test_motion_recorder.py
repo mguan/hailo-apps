@@ -1,4 +1,4 @@
-"""Tests for hailo_apps.python.pipeline_apps.detection.motion_recorder."""
+"""Tests for the motion_detector and clip_recorder modules."""
 import datetime
 import os
 import shutil
@@ -8,10 +8,8 @@ import time
 import numpy as np
 import pytest
 
-from hailo_apps.python.pipeline_apps.detection.motion_recorder import (
-    ClipRecorder,
-    MotionDetector,
-)
+from hailo_apps.python.pipeline_apps.detection.motion_detector import MotionDetector
+from hailo_apps.python.pipeline_apps.detection.clip_recorder import ClipRecorder
 
 
 # -----------------------------------------------------------------------------
@@ -187,8 +185,8 @@ def test_videowriter_open_failure_is_handled(tmp_output_dir, monkeypatch, caplog
         def write(self, frame):  # pragma: no cover - should never be called
             raise AssertionError("write() called after open failure")
 
-    import hailo_apps.python.pipeline_apps.detection.motion_recorder as mr
-    monkeypatch.setattr(mr, "FFmpegVideoWriter", FakeWriter)
+    import hailo_apps.python.pipeline_apps.detection.clip_recorder as cr
+    monkeypatch.setattr(cr, "FFmpegVideoWriter", FakeWriter)
 
     recorder = ClipRecorder(output_dir=tmp_output_dir, fps=FPS, debounce_seconds=0.0)
     frame = _gray_frame()

@@ -13,8 +13,10 @@ event.
 
 | File | Purpose |
 |------|---------|
-| `motion_recorder.py` | App entry point, `app_callback`, `MotionDetector`, `ClipRecorder` |
+| `motion_recorder_app.py` | App entry point — `app_callback`, overlay drawing, `main()` |
 | `motion_recorder_pipeline.py` | `GStreamerMotionRecorderApp` — pipeline assembly + CLI arguments |
+| `motion_detector.py` | `MotionDetector` — background-subtraction motion detection |
+| `clip_recorder.py` | `ClipRecorder`, `FFmpegVideoWriter` — clip recording engine |
 
 ## Running
 
@@ -25,7 +27,7 @@ From the repo root, with `setup_env.sh` already sourced:
 ./run_motion_recorder.sh
 
 # Direct invocation
-python hailo_apps/python/pipeline_apps/detection/motion_recorder.py --input rpi
+python hailo_apps/python/pipeline_apps/detection/motion_recorder_app.py --input rpi
 ```
 
 Press `Ctrl+C` to stop. The in-progress clip (if any) is flushed and closed cleanly
@@ -77,14 +79,14 @@ Inherited from `get_pipeline_parser()`. Most useful ones:
 | `--use-frame` | Enable the live preview window |
 | `--show-fps` | Overlay FPS on the display |
 
-Run `python motion_recorder.py --help` for the full list.
+Run `python motion_recorder_app.py --help` for the full list.
 
 ## Tuning
 
 - **Too many false triggers** → raise `--motion-threshold` (e.g. `25`) or `--motion-min-area` (e.g. `200`).
 - **Missing real motion** → lower `--motion-threshold` (e.g. `10`) or `--motion-min-area` (e.g. `20`).
 - **Clip cuts too soon after action stops** → `ClipRecorder.COOLDOWN_SECONDS` in
-  `motion_recorder.py` (default `3.0s`). Not currently a CLI flag.
+  `clip_recorder.py` (default `3.0s`). Not currently a CLI flag.
 - **Background adapts too fast / too slow** → `MotionDetector.BG_LEARNING_RATE`
   (default `0.02`). Higher = adapts faster (better for changing lighting, worse for
   catching slow-moving subjects).
