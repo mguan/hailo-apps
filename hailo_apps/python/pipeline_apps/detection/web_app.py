@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 import cv2
@@ -187,6 +188,8 @@ def delete_clips_bulk():
 
 def start_server(host='0.0.0.0', port=5000):
     """Start the Flask server. Designed to be run in a thread."""
+    # Suppress werkzeug request logging (GET, POST request logs)
+    logging.getLogger('werkzeug').setLevel(logging.WARNING)
     # Run with reloader=False to avoid issues when running in a background thread
     app.run(host=host, port=port, debug=False, use_reloader=False)
 
