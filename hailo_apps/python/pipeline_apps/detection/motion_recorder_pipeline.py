@@ -40,18 +40,15 @@ class GStreamerMotionRecorderApp(GStreamerApp):
             self.video_sink = "fakesink"
 
         opts = self.options_menu
-        self.user_data.record_clips = opts.record_clips
         self.user_data.motion_min_area = opts.motion_min_area
         self.user_data.motion_threshold = opts.motion_threshold
         self.user_data.output_dir = opts.output_dir
         self.user_data.fps = float(self.frame_rate) if self.frame_rate else 30.0
         self.user_data.debounce_seconds = opts.debounce_seconds
         
-        self.user_data.web_app_host = opts.web_app_host
         self.user_data.web_app_port = opts.web_app_port
 
-        if opts.record_clips:
-            os.makedirs(opts.output_dir, exist_ok=True)
+        os.makedirs(opts.output_dir, exist_ok=True)
 
         hailo_logger.debug(
             "Parent GStreamerApp initialized | arch=%s | input=%s | fps=%s | sync=%s | show_fps=%s",
@@ -77,12 +74,7 @@ class GStreamerMotionRecorderApp(GStreamerApp):
             action="store_true",
             help="Enable the visual GUI display window (disabled by default)",
         )
-        parser.add_argument(
-            "--no-record-clips",
-            dest="record_clips",
-            action="store_false",
-            help="Disable recording of motion clips (recording is on by default)",
-        )
+
         parser.add_argument(
             "--motion-min-area",
             type=int,
@@ -108,12 +100,7 @@ class GStreamerMotionRecorderApp(GStreamerApp):
             help="Debounce seconds for motion detection. If motion lasted this long or less, do not record. (default: 4.0)",
         )
 
-        parser.add_argument(
-            "--web-app-host",
-            type=str,
-            default="0.0.0.0",
-            help="Host interface address to bind the web dashboard server to (default: 0.0.0.0)",
-        )
+
         parser.add_argument(
             "--web-app-port",
             type=int,

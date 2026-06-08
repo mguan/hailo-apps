@@ -58,7 +58,6 @@ window, never in the saved file.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--no-record-clips` | (on) | Disable clip recording (motion detection still runs if `--use-frame`) |
 | `--motion-min-area N` | `50` | Minimum contour area (in *original-resolution* pixels²) to count as motion |
 | `--motion-threshold N` | `15` | Threshold for per-pixel frame difference (0–255) |
 | `--output-dir PATH` | `/home/pi/Videos` | Root directory for saved clips |

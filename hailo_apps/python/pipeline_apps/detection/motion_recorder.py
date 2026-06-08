@@ -240,13 +240,10 @@ class ClipRecorder:
 class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
-        # Config — populated by the pipeline from CLI options
-        self.record_clips = True
         self.motion_min_area = 50
         self.motion_threshold = 15
         self.output_dir = "/home/pi/Videos"
         self.fps = 30.0
-        self.web_app_host = "0.0.0.0"
         self.web_app_port = 5000
         self.debounce_seconds = 4.0
         # Helper objects — built lazily on the first frame
@@ -262,7 +259,7 @@ def _ensure_helpers(user_data):
         user_data.motion_detector = MotionDetector(
             user_data.motion_min_area, user_data.motion_threshold
         )
-    if user_data.record_clips and user_data.recorder is None:
+    if user_data.recorder is None:
         user_data.recorder = ClipRecorder(
             user_data.output_dir,
             user_data.fps,
@@ -319,8 +316,7 @@ def app_callback(element, buffer, user_data):
     # is drawn after recording.
     _draw_motion_overlay(frame_bgr, motion_boxes)
 
-    if user_data.record_clips:
-        user_data.recorder.feed(frame_bgr, motion_detected, width, height)
+    user_data.recorder.feed(frame_bgr, motion_detected, width, height)
 
     # Always draw the HUD for the web dashboard stream
     recording = user_data.recorder.recording if user_data.recorder else False
@@ -350,12 +346,12 @@ def main():
     # Start the Flask web server in a background daemon thread
     flask_thread = threading.Thread(
         target=web_app.start_server,
-        kwargs={'host': user_data.web_app_host, 'port': user_data.web_app_port},
+        kwargs={'host': '0.0.0.0', 'port': user_data.web_app_port},
         daemon=True
     )
     flask_thread.start()
     hailo_logger.info(
-        f"Web dashboard started on http://{user_data.web_app_host}:{user_data.web_app_port}"
+        f"Web dashboard started on http://0.0.0.0:{user_data.web_app_port}"
     )
 
     try:
