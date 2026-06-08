@@ -36,7 +36,7 @@ class GStreamerMotionRecorderApp(GStreamerApp):
         hailo_logger.info("Initializing GStreamer Motion Recorder App...")
         super().__init__(parser, user_data)
 
-        if self.options_menu.no_display:
+        if not self.options_menu.gui:
             self.video_sink = "fakesink"
 
         opts = self.options_menu
@@ -73,9 +73,9 @@ class GStreamerMotionRecorderApp(GStreamerApp):
     @staticmethod
     def _add_arguments(parser):
         parser.add_argument(
-            "--no-display",
+            "--gui",
             action="store_true",
-            help="Disable the visual display (run headless, e.g. for SSH or remote recording)",
+            help="Enable the visual GUI display window (disabled by default)",
         )
         parser.add_argument(
             "--no-record-clips",
