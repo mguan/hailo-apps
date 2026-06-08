@@ -327,10 +327,7 @@ def app_callback(element, buffer, user_data):
 
     web_app.set_shared_frame(frame_bgr)
 
-    if motion_detected:
-        hailo_logger.info(
-            "Frame %d | %d motion zone(s)", user_data.get_count(), len(motion_boxes)
-        )
+
 
 
 def main():
