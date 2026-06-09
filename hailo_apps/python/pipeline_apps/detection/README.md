@@ -63,7 +63,7 @@ window, never in the saved file.
 | `--motion-min-area N` | `50` | Minimum contour area (in *original-resolution* pixels²) to count as motion |
 | `--motion-threshold N` | `15` | Threshold for per-pixel frame difference (0–255) |
 | `--output-dir PATH` | `/home/pi/Videos` | Root directory for saved clips |
-| `--debounce-seconds N` | `4.0` | Discard clips whose motion lasted ≤ N seconds |
+| `--debounce-seconds N` | `3.0` | Discard clips whose motion lasted ≤ N seconds |
 | `--gui` | off | Open the GStreamer display window (otherwise runs headless with `fakesink`) |
 | `--web-app-port N` | `5000` | Port for the web dashboard |
 

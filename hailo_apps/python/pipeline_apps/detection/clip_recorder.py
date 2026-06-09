@@ -80,7 +80,7 @@ class FFmpegVideoWriter:
 class ClipRecorder:
     COOLDOWN_SECONDS = 3.0
 
-    def __init__(self, output_dir: str, fps: float, debounce_seconds: float = 4.0):
+    def __init__(self, output_dir: str, fps: float, debounce_seconds: float = 3.0):
         self.output_dir = output_dir
         self.fps = fps
         self.debounce_seconds = debounce_seconds

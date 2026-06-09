@@ -100,8 +100,8 @@ class GStreamerMotionRecorderApp(GStreamerApp):
         parser.add_argument(
             "--debounce-seconds",
             type=float,
-            default=4.0,
-            help="Debounce seconds for motion detection. If motion lasted this long or less, do not record. (default: 4.0)",
+            default=3.0,
+            help="Debounce seconds for motion detection. If motion lasted this long or less, do not record. (default: 3.0)",
         )
 
 
