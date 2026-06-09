@@ -10,7 +10,11 @@ server = Flask(__name__)
 
 _frame_cond = threading.Condition()
 shared_frame = None
+shared_jpeg = None   # pre-encoded JPEG bytes — updated alongside shared_frame
 frame_seq = 0
+
+# JPEG encode params used by set_shared_frame (encoding happens once per frame, not once per client).
+_JPEG_ENCODE_PARAMS = [cv2.IMWRITE_JPEG_QUALITY, 80]
 
 def get_shared_frame():
     """Retrieve the latest frame and its sequence atomically."""
@@ -18,10 +22,12 @@ def get_shared_frame():
         return shared_frame, frame_seq
 
 def set_shared_frame(frame):
-    """Update the shared frame, bump the sequence, and wake stream consumers."""
-    global shared_frame, frame_seq
+    """Pre-encode frame to JPEG, update shared state, and wake stream consumers."""
+    global shared_frame, shared_jpeg, frame_seq
+    ret, buf = cv2.imencode('.jpg', frame, _JPEG_ENCODE_PARAMS)
     with _frame_cond:
         shared_frame = frame
+        shared_jpeg = bytes(buf) if ret else None
         frame_seq += 1
         _frame_cond.notify_all()
 
@@ -72,14 +78,13 @@ def gen_frames():
     min_interval = 1.0 / STREAM_FPS
     last_seq = -1
     last_emit = 0.0
-    encode_params = [cv2.IMWRITE_JPEG_QUALITY, 80]
     while True:
         with _frame_cond:
             # Wait until a newer frame arrives (or 1s max so we can check for shutdown).
             _frame_cond.wait_for(lambda: frame_seq != last_seq, timeout=1.0)
-            frame = shared_frame
+            jpeg = shared_jpeg
             seq = frame_seq
-        if frame is None or seq == last_seq:
+        if jpeg is None or seq == last_seq:
             continue
 
         # Throttle without busy-sleeping: skip frames that come in faster than STREAM_FPS.
@@ -91,12 +96,9 @@ def gen_frames():
         last_seq = seq
         last_emit = now
 
-        ret, buffer = cv2.imencode('.jpg', frame, encode_params)
-        if not ret:
-            continue
-
+        # JPEG is already encoded by set_shared_frame — just yield the bytes.
         yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+               b'Content-Type: image/jpeg\r\n\r\n' + jpeg + b'\r\n')
 
 
 @server.route('/video_feed')

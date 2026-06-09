@@ -3,6 +3,7 @@
 import datetime
 import os
 import subprocess
+import threading
 
 # Local application-specific imports
 from hailo_apps.python.core.common.hailo_logger import get_logger
@@ -51,11 +52,15 @@ class FFmpegVideoWriter:
         return self._opened and self._process is not None and self._process.poll() is None
 
     def write(self, frame):
-        if self.isOpened():
-            try:
-                self._process.stdin.write(frame.tobytes())
-            except Exception as e:
-                hailo_logger.error("Failed to write frame to FFmpeg: %s", e)
+        # Use _opened flag (set on start/error) instead of polling process.poll() every frame.
+        if not self._opened:
+            return
+        try:
+            # frame.data is a zero-copy memoryview — avoids a ~2.8 MB alloc per frame.
+            self._process.stdin.write(frame.data)
+        except Exception as e:
+            hailo_logger.error("Failed to write frame to FFmpeg: %s", e)
+            self._opened = False
 
     def release(self):
         if self._process:
@@ -143,28 +148,44 @@ class ClipRecorder:
         hailo_logger.info("Motion entered. Started clip recording: %s", filename)
 
     def _stop(self):
-        self._writer.release()
-        duration = self._frames_written / self.fps if self.fps else 0.0
-        motion_duration = (self._motion_last_frame - self._motion_start_frame + 1) / self.fps if self.fps else 0.0
-
-        if motion_duration <= self.debounce_seconds:
-            hailo_logger.info(
-                "Motion lasted %.2fs (<= %.2fs debounce). Discarding clip: %s",
-                motion_duration, self.debounce_seconds, self._current_path
-            )
-            if self._current_path and os.path.exists(self._current_path):
-                try:
-                    os.remove(self._current_path)
-                except Exception as e:
-                    hailo_logger.error("Failed to delete debounced clip %s: %s", self._current_path, e)
-        else:
-            hailo_logger.info(
-                "Motion left. Stopped clip recording: %s (%d frames, %.1fs, motion duration: %.1fs)",
-                self._current_path, self._frames_written, duration, motion_duration
-            )
+        # Snapshot all clip state before clearing, so the background thread has its own
+        # copies and the recorder is free to start a new clip without delay.
+        writer = self._writer
+        current_path = self._current_path
+        frames_written = self._frames_written
+        motion_start = self._motion_start_frame
+        motion_last = self._motion_last_frame
+        fps = self.fps
+        debounce = self.debounce_seconds
 
         self._writer = None
         self._current_path = None
         self._frames_written = 0
         self._motion_start_frame = 0
         self._motion_last_frame = 0
+
+        def _finalize():
+            """Flush FFmpeg and handle debounce deletion — runs in a daemon thread."""
+            writer.release()
+            duration = frames_written / fps if fps else 0.0
+            motion_duration = (motion_last - motion_start + 1) / fps if fps else 0.0
+
+            if motion_duration <= debounce:
+                hailo_logger.info(
+                    "Motion lasted %.2fs (<= %.2fs debounce). Discarding clip: %s",
+                    motion_duration, debounce, current_path,
+                )
+                if current_path and os.path.exists(current_path):
+                    try:
+                        os.remove(current_path)
+                    except Exception as e:
+                        hailo_logger.error("Failed to delete debounced clip %s: %s", current_path, e)
+            else:
+                hailo_logger.info(
+                    "Motion left. Stopped clip recording: %s (%d frames, %.1fs, motion duration: %.1fs)",
+                    current_path, frames_written, duration, motion_duration,
+                )
+
+        # Delegate blocking I/O (FFmpeg flush + optional file delete) to a daemon thread
+        # so the GStreamer pipeline callback is never stalled.
+        threading.Thread(target=_finalize, daemon=True).start()
