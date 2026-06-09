@@ -71,18 +71,19 @@ def _draw_timestamp(frame_bgr):
     
     text_size, _ = cv2.getTextSize(timestamp_str, font, scale, thickness)
     text_w, text_h = text_size
-    _, frame_w = frame_bgr.shape[:2]
+    frame_h, frame_w = frame_bgr.shape[:2]
     
     x = frame_w - text_w - 20
     y = text_h + 20
     
-    cv2.rectangle(
-        frame_bgr,
-        (x - 5, y - text_h - 5),
-        (x + text_w + 5, y + 5),
-        (0, 0, 0),
-        -1
-    )
+    # Draw a 50% transparent background rectangle behind the text
+    x1, y1 = max(0, x - 5), max(0, y - text_h - 5)
+    x2, y2 = min(frame_w, x + text_w + 5), min(frame_h, y + 5)
+    
+    overlay = frame_bgr[y1:y2, x1:x2].copy()
+    cv2.rectangle(overlay, (0, 0), (x2 - x1, y2 - y1), (0, 0, 0), -1)
+    frame_bgr[y1:y2, x1:x2] = cv2.addWeighted(overlay, 0.5, frame_bgr[y1:y2, x1:x2], 0.5, 0)
+    
     cv2.putText(frame_bgr, timestamp_str, (x, y), font, scale, color, thickness, cv2.LINE_AA)
 
 
